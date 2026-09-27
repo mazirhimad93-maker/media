@@ -70,8 +70,9 @@ export function verifyOAuthState(state, expectedProvider) {
 }
 
 export function connectorOrigin(request) {
-  const configured = process.env.CONNECTOR_PUBLIC_URL?.trim();
-  return (configured || new URL(request.url).origin).replace(/\/$/, '');
+  // Use the deployment that initiated OAuth. This prevents stale Netlify
+  // CONNECTOR_PUBLIC_URL values from sending callbacks to an older site.
+  return new URL(request.url).origin.replace(/\/$/, '');
 }
 
 export function callbacks(request) {
