@@ -740,10 +740,71 @@ function openRawVideo(url,title){
   $('video-modal').hidden=false;
 }
 
+function populateConnectorOptions(){
+  const data=state.data||{campaigns:[],pools:[]};
+
+  const campaignSelect=$('connector-campaign');
+  const poolSelect=$('connector-pool');
+
+  if(campaignSelect){
+    const current=campaignSelect.value||'';
+    campaignSelect.innerHTML='<option value="">No campaign assignment</option>'+((data.campaigns||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name||'Untitled campaign')}</option>`).join(''));
+    if([...campaignSelect.options].some(o=>o.value===current)) campaignSelect.value=current;
+  }
+
+  if(poolSelect){
+    const current=poolSelect.value||'';
+    poolSelect.innerHTML='<option value="">No pool assignment</option>'+((data.pools||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.name||p.slug||'Distribution pool')}</option>`).join(''));
+    if([...poolSelect.options].some(o=>o.value===current)) poolSelect.value=current;
+  }
+}
+
+async function startConnector(provider){
+  const config=state.config||{providers:{}};
+  const ready=config.providers?.[provider]?.ready;
+
+  if(!ready){
+    const providerName=provider==='instagram'?'Instagram':'YouTube';
+    $('connector-message').textContent=`${providerName} app credentials are not configured in this Netlify project yet.`;
+    $('connector-message').className='connector-message error';
+    return;
+  }
+
+  const params=new URLSearchParams({
+    provider,
+    campaignId:$('connector-campaign')?.value||'',
+    poolId:$('connector-pool')?.value||'',
+    dailyLimit:$('connector-daily')?.value||'4',
+    weeklyLimit:$('connector-weekly')?.value||'28',
+    minGapMinutes:$('connector-gap')?.value||'60'
+  });
+
+  const button=provider==='instagram'?$('connect-instagram'):$('connect-youtube');
+  if(button) button.disabled=true;
+
+  $('connector-message').textContent=`Opening ${provider==='instagram'?'Instagram':'Google'} authorization…`;
+  $('connector-message').className='connector-message';
+
+  try{
+    const result=await api(`/api/oauth/start?${params.toString()}`,{
+      headers:{'x-media-password':WRITE_KEY}
+    });
+
+    if(!result.authorizationUrl) throw new Error('OAuth URL was not returned');
+    window.location.href=result.authorizationUrl;
+  }catch(error){
+    $('connector-message').textContent=error.message;
+    $('connector-message').className='connector-message error';
+    if(button) button.disabled=false;
+  }
+}
+
 function renderAccounts(){
   const data=state.data||{accounts:[]};
   const config=state.config||{providers:{}};
   const accounts=data.accounts||[];
+
+  populateConnectorOptions();
 
   $('account-count').textContent=`${accounts.length} channels`;
   $('ig-provider-status').textContent=config.providers?.instagram?.ready
@@ -753,6 +814,20 @@ function renderAccounts(){
   $('yt-provider-status').textContent=config.providers?.youtube?.ready
     ? 'Connector configured'
     : 'Existing channel tokens in DB';
+
+  if($('connect-instagram')){
+    $('connect-instagram').disabled=!config.providers?.instagram?.ready;
+    $('connect-instagram-status').textContent=config.providers?.instagram?.ready
+      ? 'Connect another professional account'
+      : 'Add Instagram app keys in Netlify';
+  }
+
+  if($('connect-youtube')){
+    $('connect-youtube').disabled=!config.providers?.youtube?.ready;
+    $('connect-youtube-status').textContent=config.providers?.youtube?.ready
+      ? 'Connect another YouTube channel'
+      : 'Add Google OAuth keys in Netlify';
+  }
 
   $('accounts-table').innerHTML=accounts.length
     ? accounts.map(a=>{
@@ -864,6 +939,9 @@ $('content-platform-filter').addEventListener('change',renderContent);
 $('content-status-filter').addEventListener('change',renderContent);
 $('content-campaign-filter').addEventListener('change',renderContent);
 $('content-date-filter').addEventListener('change',renderContent);
+
+if($('connect-instagram')) $('connect-instagram').addEventListener('click',()=>startConnector('instagram'));
+if($('connect-youtube')) $('connect-youtube').addEventListener('click',()=>startConnector('youtube'));
 
 $('select-visible-clips').addEventListener('change',event=>{
   const visible=clipFilterRows().filter(x=>x.publishing_approved===false);
