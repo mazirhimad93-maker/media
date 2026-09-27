@@ -237,13 +237,18 @@ function renderOverview(){
 function clipFilterRows(){
   const status=$('clip-status-filter')?.value||'all';
   const campaign=$('clip-campaign-filter')?.value||'all';
+  const platform=$('clip-platform-filter')?.value||'all';
+  const dateWindow=$('clip-date-filter')?.value||'all';
   const search=($('clip-search')?.value||'').trim().toLowerCase();
+  const cutoff=dateWindow==='all'?null:(Date.now()-Number(dateWindow)*86400000);
 
   return (state.clips?.clips||[]).filter(clip=>{
     if(status==='needs' && clip.publishing_approved!==false) return false;
     if(status==='approved' && clip.publishing_approved!==true) return false;
     if(status==='published' && !(clip.published_count>0)) return false;
     if(campaign!=='all' && clip.campaign_id!==campaign) return false;
+    if(platform!=='all' && !(clip.distributions||[]).some(d=>d.platform===platform)) return false;
+    if(cutoff && new Date(clip.created_at||0).getTime()<cutoff) return false;
 
     if(search){
       const hay=[
@@ -259,6 +264,11 @@ function clipFilterRows(){
     }
 
     return true;
+  }).sort((a,b)=>{
+    if(a.publishing_approved!==b.publishing_approved){
+      return a.publishing_approved===false?-1:1;
+    }
+    return new Date(b.created_at||0)-new Date(a.created_at||0);
   });
 }
 
@@ -318,7 +328,7 @@ function renderClips(){
 
       return `
         <tr>
-          <td><input class="row-check clip-check" type="checkbox" data-id="${esc(clip.id)}" ${checked?'checked':''}></td>
+          <td><input class="row-check clip-check" type="checkbox" data-id="${esc(clip.id)}" ${checked?'checked':''} ${canApprove?'':'disabled'}></td>
           <td>
             <strong>${esc(clip.title||'Clip')}</strong>
             ${clip.hook?`<div class="hook-text">${esc(clip.hook)}</div>`:''}
@@ -354,8 +364,9 @@ function renderClips(){
 
   const selectAll=$('select-visible-clips');
   if(selectAll){
-    selectAll.checked=rows.length>0 && rows.every(x=>state.selectedClips.has(x.id));
-    selectAll.indeterminate=rows.some(x=>state.selectedClips.has(x.id)) && !selectAll.checked;
+    const eligible=rows.filter(x=>x.publishing_approved===false);
+    selectAll.checked=eligible.length>0 && eligible.every(x=>state.selectedClips.has(x.id));
+    selectAll.indeterminate=eligible.some(x=>state.selectedClips.has(x.id)) && !selectAll.checked;
   }
 }
 
@@ -378,7 +389,7 @@ function bindClipButtons(){
       if(input.checked) state.selectedClips.add(id);
       else state.selectedClips.delete(id);
       updateBulkBar();
-      const visible=clipFilterRows();
+      const visible=clipFilterRows().filter(x=>x.publishing_approved===false);
       const selectAll=$('select-visible-clips');
       if(selectAll){
         selectAll.checked=visible.length>0 && visible.every(x=>state.selectedClips.has(x.id));
@@ -661,11 +672,14 @@ function contentFilterRows(){
   const platform=$('content-platform-filter')?.value||'all';
   const status=$('content-status-filter')?.value||'all';
   const campaign=$('content-campaign-filter')?.value||'all';
+  const dateWindow=$('content-date-filter')?.value||'all';
+  const cutoff=dateWindow==='all'?null:(Date.now()-Number(dateWindow)*86400000);
 
   return (state.content?.rows||[]).filter(row=>{
     if(platform!=='all' && row.platform!==platform) return false;
     if(status!=='all' && row.status!==status) return false;
     if(campaign!=='all' && row.campaign_id!==campaign) return false;
+    if(cutoff && new Date(row.finished_at||row.created_at||0).getTime()<cutoff) return false;
     return true;
   });
 }
@@ -839,6 +853,8 @@ $('refresh-all').addEventListener('click',load);
 
 $('clip-status-filter').addEventListener('change',renderClips);
 $('clip-campaign-filter').addEventListener('change',renderClips);
+$('clip-platform-filter').addEventListener('change',renderClips);
+$('clip-date-filter').addEventListener('change',renderClips);
 $('clip-search').addEventListener('input',renderClips);
 
 $('campaign-status-filter').addEventListener('change',renderCampaigns);
@@ -847,9 +863,10 @@ $('campaign-search').addEventListener('input',renderCampaigns);
 $('content-platform-filter').addEventListener('change',renderContent);
 $('content-status-filter').addEventListener('change',renderContent);
 $('content-campaign-filter').addEventListener('change',renderContent);
+$('content-date-filter').addEventListener('change',renderContent);
 
 $('select-visible-clips').addEventListener('change',event=>{
-  const visible=clipFilterRows();
+  const visible=clipFilterRows().filter(x=>x.publishing_approved===false);
   for(const clip of visible){
     if(event.target.checked) state.selectedClips.add(clip.id);
     else state.selectedClips.delete(clip.id);
