@@ -90,12 +90,28 @@ export const providerConfig = () => ({
 });
 
 async function restRequest(base, key, path, { method = 'GET', body, headers = {} } = {}) {
+  const normalizedKey = String(key || '').trim();
+  if (normalizedKey.startsWith('sb_publishable_')) {
+    const error = new Error('This backend needs a Supabase secret key or legacy service_role key, not a publishable key.');
+    error.status = 401;
+    throw error;
+  }
+
+  // Supabase's new sb_secret_* keys are opaque API keys, not JWTs.
+  // They must be sent in the apikey header and must NOT be sent as Bearer tokens.
+  // Legacy service_role keys are JWTs and can still be sent as both apikey + Bearer.
+  const authHeaders = {
+    apikey: normalizedKey,
+    'content-type': 'application/json',
+  };
+  if (!normalizedKey.startsWith('sb_secret_')) {
+    authHeaders.authorization = `Bearer ${normalizedKey}`;
+  }
+
   const response = await fetch(`${base.replace(/\/$/, '')}/rest/v1/${path}`, {
     method,
     headers: {
-      apikey: key,
-      authorization: `Bearer ${key}`,
-      'content-type': 'application/json',
+      ...authHeaders,
       ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
