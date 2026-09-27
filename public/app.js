@@ -9,6 +9,8 @@ const state={
   campaigns:{campaigns:[],summary:{}},
   clips:{clips:[],summary:{}},
   content:{rows:[],published:[],summary:{}},
+  jobs:{jobs:[],campaign_progress:[],summary:{}},
+  presets:{presets:[]},
   selectedClips:new Set(),
   view:'overview'
 };
@@ -598,6 +600,235 @@ function campaignFilterRows(){
   });
 }
 
+function populatePresetOptions(){
+  const presets=state.presets?.presets||[];
+  const options=presets.map(p=>`<option value="${esc(p.slug)}" data-version="${Number(p.current_version||1)}">${esc(p.name||p.slug)} · v${Number(p.current_version||1)}</option>`).join('');
+
+  const select=$('new-preset');
+  if(select){
+    const current=select.value;
+    select.innerHTML=options||'<option value="source_native">Source Native</option>';
+    if(current && [...select.options].some(o=>o.value===current)) select.value=current;
+    else if([...select.options].some(o=>o.value==='podcast_clean')) select.value='podcast_clean';
+  }
+
+  const base=$('preset-base');
+  if(base){
+    const current=base.value;
+    base.innerHTML=options||'<option value="source_native">Source Native</option>';
+    if(current && [...base.options].some(o=>o.value===current)) base.value=current;
+  }
+}
+
+function campaignLiveProgress(campaignId){
+  return (state.jobs?.campaign_progress||[]).find(x=>x.id===campaignId)||null;
+}
+
+function etaLabel(job){
+  if(job?.waiting) return 'Waiting for selection';
+  if(job?.error) return 'Needs attention';
+  if(job?.stage==='complete') return 'Complete';
+  if(Number.isFinite(job?.eta_minutes) && job.eta_minutes>0) return `≈ ${Math.max(1,Math.round(job.eta_minutes))} min left`;
+  return 'Working…';
+}
+
+function renderJobs(){
+  const all=state.jobs?.jobs||[];
+  const active=all.filter(j=>!['complete','failed'].includes(j.stage));
+  const rows=active.length?active:all.slice(0,6);
+
+  if($('jobs-last-refresh')){
+    const when=state.jobs?.refreshed_at?new Date(state.jobs.refreshed_at):null;
+    $('jobs-last-refresh').textContent=when&&!Number.isNaN(when.getTime())
+      ? `Updated ${when.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
+      : 'Live';
+  }
+
+  if(!$('clipper-jobs-list')) return;
+
+  $('clipper-jobs-list').innerHTML=rows.length?rows.map(job=>{
+    const campaign=(state.campaigns?.campaigns||[]).find(c=>c.id===job.campaign_id);
+    const variants=job.variants||{};
+    const stageClass=job.error?'failed':job.stage==='complete'?'complete':job.stage==='rendering'?'rendering':job.waiting?'waiting':'active';
+
+    return `
+      <div class="job-card ${stageClass}">
+        <div class="job-card-head">
+          <div class="job-title-wrap">
+            <span class="job-pulse"></span>
+            <div>
+              <strong>${esc(job.title||'Clipper job')}</strong>
+              <span>${esc(campaign?.name||'No campaign')} · ${esc(job.preset_slug||'source_native')}</span>
+            </div>
+          </div>
+          <div class="job-eta">
+            <strong>${esc(etaLabel(job))}</strong>
+            <span>${Math.round(Number(job.progress||0))}%</span>
+          </div>
+        </div>
+
+        <div class="job-progress-track"><div class="job-progress-fill" style="width:${Math.max(2,Math.min(100,Number(job.progress||0)))}%"></div></div>
+
+        <div class="job-stage-row">
+          <strong>${esc(job.stage_label||job.stage)}</strong>
+          <span>${variants.approved||0}/${variants.total||0} clips ready</span>
+        </div>
+
+        <div class="job-stage-chips">
+          <span class="mini-chip">Source: ${esc(job.source_status||'—')}</span>
+          ${variants.planned? `<span class="mini-chip">${variants.planned} planned</span>`:''}
+          ${variants.rendering? `<span class="mini-chip job-chip-live">${variants.rendering} rendering</span>`:''}
+          ${variants.approved? `<span class="mini-chip">${variants.approved} approved</span>`:''}
+          ${variants.failed? `<span class="mini-chip job-chip-error">${variants.failed} failed</span>`:''}
+        </div>
+
+        ${job.error_message?`<div class="job-error">${esc(job.error_message)}</div>`:''}
+      </div>
+    `;
+  }).join(''):'<div class="empty-row">No Clipper jobs found yet. Create a campaign to submit a source.</div>';
+}
+
+function renderPresetLibrary(){
+  if(!$('preset-library')) return;
+  const presets=state.presets?.presets||[];
+  $('preset-library').innerHTML=presets.length?presets.map(p=>`
+    <article class="preset-card">
+      <div class="preset-card-main">
+        <div class="preset-icon">P</div>
+        <div>
+          <strong>${esc(p.name||p.slug)}</strong>
+          <span>${esc(p.description||p.category||'Clipper preset')}</span>
+        </div>
+      </div>
+      <div class="preset-card-meta">
+        <span class="mini-chip">v${Number(p.current_version||1)}</span>
+        <span class="mini-chip">${esc(p.renderer_contract_version||'13.6')}</span>
+        ${p.is_system?'<span class="mini-chip">system</span>':''}
+        ${p.preview_url?`<a class="open-btn" href="${esc(p.preview_url)}" target="_blank" rel="noopener">Preview ↗</a>`:''}
+      </div>
+    </article>
+  `).join(''):'<div class="empty-row">No presets found. Make sure the Clipper preset registry migration has been installed.</div>';
+}
+
+function openCreateCampaign(){
+  populatePresetOptions();
+  $('create-campaign-message').textContent='';
+  $('create-campaign-modal').hidden=false;
+  setTimeout(()=>$('new-campaign-name')?.focus(),50);
+}
+function closeCreateCampaign(){ $('create-campaign-modal').hidden=true; }
+
+function openPresets(){
+  populatePresetOptions();
+  renderPresetLibrary();
+  $('preset-message').textContent='';
+  $('presets-modal').hidden=false;
+}
+function closePresets(){ $('presets-modal').hidden=true; }
+
+async function submitCreateCampaign(event){
+  event.preventDefault();
+  const btn=$('submit-campaign');
+  btn.disabled=true;
+  btn.textContent='Creating…';
+  $('create-campaign-message').textContent='Submitting source to Clipper…';
+  $('create-campaign-message').className='connector-message';
+
+  try{
+    const presetSlug=$('new-preset').value||'source_native';
+    const preset=(state.presets?.presets||[]).find(p=>p.slug===presetSlug);
+    const result=await api('/api/clipper/campaigns/create',{
+      method:'POST',
+      headers:{'x-media-password':WRITE_KEY},
+      body:{
+        name:$('new-campaign-name').value,
+        source_url:$('new-source-url').value,
+        source_title:$('new-source-title').value,
+        preset_slug:presetSlug,
+        preset_version:Number(preset?.current_version||1),
+        desired_clips:Number($('new-clip-count').value||3),
+        operation_mode:$('new-operation-mode').value,
+        selector_mode:$('new-selector-mode').value,
+        editing_prompt:$('new-editing-prompt').value,
+        cta_text:$('new-cta-text').value,
+        brief:$('new-campaign-brief').value,
+        rights_confirmed:$('new-rights-confirmed').checked
+      }
+    });
+
+    $('create-campaign-message').textContent=result.message||'Campaign queued.';
+    $('create-campaign-message').className='connector-message success';
+    await refreshMediaData();
+    await refreshJobs();
+
+    setTimeout(()=>{
+      closeCreateCampaign();
+      $('create-campaign-form').reset();
+      setView('campaigns');
+    },650);
+  }catch(error){
+    $('create-campaign-message').textContent=error.message;
+    $('create-campaign-message').className='connector-message error';
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Create & Queue';
+  }
+}
+
+async function submitPreset(event){
+  event.preventDefault();
+  const btn=$('save-preset');
+  btn.disabled=true;
+  btn.textContent='Saving…';
+  $('preset-message').textContent='Saving preset…';
+  $('preset-message').className='connector-message';
+
+  try{
+    let presetJson=null;
+    const raw=$('preset-json').value.trim();
+    if(raw){
+      try{presetJson=JSON.parse(raw);}catch{throw new Error('Advanced preset JSON is not valid JSON');}
+    }
+
+    const result=await api('/api/clipper/presets',{
+      method:'POST',
+      headers:{'x-media-password':WRITE_KEY},
+      body:{
+        name:$('preset-name').value,
+        slug:$('preset-slug').value,
+        description:$('preset-description').value,
+        base_preset_slug:$('preset-base').value,
+        preview_url:$('preset-preview-url').value||null,
+        preset_json:presetJson
+      }
+    });
+
+    state.presets=await api('/api/clipper/presets');
+    populatePresetOptions();
+    renderPresetLibrary();
+    $('create-preset-form').reset();
+    $('preset-message').textContent=`Saved ${result.preset?.name||'preset'}.`;
+    $('preset-message').className='connector-message success';
+  }catch(error){
+    $('preset-message').textContent=error.message;
+    $('preset-message').className='connector-message error';
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Save Preset';
+  }
+}
+
+async function refreshJobs(){
+  try{
+    state.jobs=await api('/api/clipper/jobs');
+    renderJobs();
+    renderCampaigns();
+  }catch(error){
+    console.warn('Clipper progress refresh failed',error);
+    if($('jobs-last-refresh')) $('jobs-last-refresh').textContent='Refresh failed';
+  }
+}
+
 function renderCampaigns(){
   const s=state.campaigns?.summary||{};
 
@@ -621,6 +852,20 @@ function renderCampaigns(){
           </div>
           <span class="campaign-status ${c.status==='active'?'active':''}">${esc(c.status||'unknown')}</span>
         </div>
+
+        ${(()=>{
+          const live=campaignLiveProgress(c.id);
+          if(!live) return '';
+          const progress=Math.max(0,Math.min(100,Number(live.progress||0)));
+          const eta=live.waiting?'Waiting for selection':(live.error?'Needs attention':(live.eta_minutes?`≈ ${Math.round(live.eta_minutes)} min left`:(progress>=100?'Complete':'Working…')));
+          return `
+            <div class="campaign-live-progress">
+              <div class="campaign-live-head"><span>Clipper progress</span><strong>${esc(eta)}</strong></div>
+              <div class="job-progress-track"><div class="job-progress-fill" style="width:${progress}%"></div></div>
+              <div class="campaign-live-foot"><span>${progress}%</span><span>${fmt(live.active_jobs||0)} active source${Number(live.active_jobs||0)===1?'':'s'}</span></div>
+            </div>
+          `;
+        })()}
 
         <div class="campaign-kpis">
           <div class="campaign-kpi"><strong>${fmt(c.clips)}</strong><span>clips</span></div>
@@ -863,38 +1108,45 @@ function renderAll(){
   renderOverview();
   renderClips();
   renderCampaigns();
+  renderJobs();
+  renderPresetLibrary();
   renderContent();
   renderAccounts();
   renderLeadCounts();
 }
 
 async function refreshMediaData(){
-  const [clips,content,campaigns]=await Promise.all([
+  const [clips,content,campaigns,jobs]=await Promise.all([
     api('/api/clips'),
     api('/api/content'),
-    api('/api/campaigns')
+    api('/api/campaigns'),
+    api('/api/clipper/jobs')
   ]);
 
   state.clips=clips;
   state.content=content;
   state.campaigns=campaigns;
+  state.jobs=jobs;
 
   populateCampaignFilters();
   renderOverview();
   renderClips();
   renderCampaigns();
+  renderJobs();
   renderContent();
 }
 
 async function load(){
   try{
-    const [dashboard,data,config,clips,content,campaigns]=await Promise.all([
+    const [dashboard,data,config,clips,content,campaigns,jobs,presets]=await Promise.all([
       api('/api/dashboard'),
       api('/api/data'),
       api('/api/config'),
       api('/api/clips'),
       api('/api/content'),
-      api('/api/campaigns')
+      api('/api/campaigns'),
+      api('/api/clipper/jobs'),
+      api('/api/clipper/presets')
     ]);
 
     state.dashboard=dashboard;
@@ -903,6 +1155,8 @@ async function load(){
     state.clips=clips;
     state.content=content;
     state.campaigns=campaigns;
+    state.jobs=jobs;
+    state.presets=presets;
 
     renderAll();
   }catch(error){
@@ -934,6 +1188,13 @@ $('clip-search').addEventListener('input',renderClips);
 
 $('campaign-status-filter').addEventListener('change',renderCampaigns);
 $('campaign-search').addEventListener('input',renderCampaigns);
+
+$('open-create-campaign').addEventListener('click',openCreateCampaign);
+$('open-presets').addEventListener('click',openPresets);
+$('create-campaign-form').addEventListener('submit',submitCreateCampaign);
+$('create-preset-form').addEventListener('submit',submitPreset);
+document.querySelectorAll('[data-close-create-campaign]').forEach(el=>el.addEventListener('click',closeCreateCampaign));
+document.querySelectorAll('[data-close-presets]').forEach(el=>el.addEventListener('click',closePresets));
 
 $('content-platform-filter').addEventListener('change',renderContent);
 $('content-status-filter').addEventListener('change',renderContent);
@@ -971,6 +1232,8 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'){
     closeVideoModal();
     closeDrawer();
+    closeCreateCampaign();
+    closePresets();
   }
 });
 
@@ -997,6 +1260,11 @@ $('sync-metrics').addEventListener('click',async()=>{
     btn.textContent='Sync metrics';
   }
 });
+
+setInterval(()=>{
+  if(document.hidden) return;
+  refreshJobs();
+},10000);
 
 const initialView=new URLSearchParams(window.location.search).get('view');
 if(['overview','clipping','campaigns','content','inbox','leads','accounts'].includes(initialView)) setView(initialView);
