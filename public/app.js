@@ -1,72 +1,155 @@
 const $=id=>document.getElementById(id);
 
-const TEMP_PASSWORD='alchemic2026';
+const WRITE_KEY='alchemic2026';
+
 const state={
   dashboard:null,
   data:null,
   config:null,
+  campaigns:{campaigns:[],summary:{}},
   clips:{clips:[],summary:{}},
   content:{rows:[],published:[],summary:{}},
+  selectedClips:new Set(),
   view:'overview'
 };
 
-const fmt=n=>Intl.NumberFormat('en',{notation:Number(n)>=10000?'compact':'standard',maximumFractionDigits:1}).format(Number(n||0));
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const platformLabel=p=>({instagram_reels:'Instagram',youtube_shorts:'YouTube',tiktok_video:'TikTok',tiktok:'TikTok',facebook:'Facebook'}[p]||p||'Unknown');
+const fmt=n=>Intl.NumberFormat('en',{
+  notation:Number(n)>=10000?'compact':'standard',
+  maximumFractionDigits:1
+}).format(Number(n||0));
+
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[c]));
+
+const platformLabel=p=>({
+  instagram_reels:'Instagram',
+  youtube_shorts:'YouTube',
+  tiktok_video:'TikTok',
+  tiktok:'TikTok',
+  facebook:'Facebook'
+}[p]||p||'Unknown');
+
+const dateShort=v=>{
+  if(!v) return '—';
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+};
 
 async function api(path,options={}){
   const headers={...(options.headers||{})};
-  if(options.body!==undefined){
-    headers['content-type']='application/json';
-  }
-  const r=await fetch(path,{
+  if(options.body!==undefined) headers['content-type']='application/json';
+
+  const response=await fetch(path,{
     ...options,
     headers,
     body:options.body===undefined?undefined:JSON.stringify(options.body)
   });
-  const payload=await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(payload.error||`Request failed (${r.status})`);
+
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(payload.error||`Request failed (${response.status})`);
   return payload;
 }
 
-function setView(name){
-  state.view=name;
-  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
-  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
-  const titles={
-    overview:['Media Dashboard','Track content, clipping, distribution, conversations and leads from one place.'],
-    clipping:['Clipping','Review every rendered clip before and after distribution.'],
-    content:['Content & Distribution','See queued posts, published results and live URLs.'],
-    inbox:['Unified Inbox','All social conversations will live in one place.'],
-    leads:['Lead Pipeline','Track content-generated leads from first engagement to client.'],
-    accounts:['Connected Channels','Manage the accounts already connected to your Distributor.']
-  };
-  $('view-title').textContent=titles[name][0];
-  $('view-subtitle').textContent=titles[name][1];
-}
-
-function stat(label,value,tone,icon){
-  return `<div class="stat-card"><div class="stat-icon ${tone}">${icon}</div><div><strong>${fmt(value)}</strong><span>${esc(label)}</span></div></div>`;
-}
-
 function statusClass(status){
-  if(status==='approved'||status==='done') return 'status-approved';
+  if(status==='approved'||status==='done'||status==='active') return 'status-approved';
   if(status==='ready') return 'status-ready';
   if(status==='running'||status==='rendering') return 'status-running';
   if(status==='failed'||status==='error') return 'status-failed';
   return 'status-other';
 }
 
+function stat(label,value,tone,icon){
+  return `
+    <div class="stat-card">
+      <div class="stat-icon ${tone}">${icon}</div>
+      <div><strong>${fmt(value)}</strong><span>${esc(label)}</span></div>
+    </div>
+  `;
+}
+
+function setView(name){
+  state.view=name;
+
+  document.querySelectorAll('.view').forEach(el=>{
+    el.classList.toggle('active',el.id===`view-${name}`);
+  });
+
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    el.classList.toggle('active',el.dataset.view===name);
+  });
+
+  const titles={
+    overview:['Media Dashboard','Track content, clipping, distribution, conversations and leads from one place.'],
+    clipping:['Clipping','Review, approve and inspect every rendered clip before and after distribution.'],
+    campaigns:['Campaigns','See each media campaign from clip production through published results.'],
+    content:['Content & Distribution','See queued posts, published results, live URLs and platform performance.'],
+    inbox:['Unified Inbox','All social conversations will live in one place.'],
+    leads:['Lead Pipeline','Track content-generated leads from first engagement to client.'],
+    accounts:['Connected Channels','Manage the accounts already connected to your Distributor.']
+  };
+
+  $('view-title').textContent=titles[name]?.[0]||'Alchemic Media';
+  $('view-subtitle').textContent=titles[name]?.[1]||'';
+}
+
+function allCampaigns(){
+  const fromCampaignApi=state.campaigns?.campaigns||[];
+  if(fromCampaignApi.length) return fromCampaignApi;
+
+  const map=new Map();
+  for(const c of state.clips?.campaigns||[]) map.set(c.id,c);
+  for(const c of state.content?.campaigns||[]) map.set(c.id,c);
+  return [...map.values()];
+}
+
+function populateCampaignFilters(){
+  const campaigns=allCampaigns();
+  const options=campaigns
+    .slice()
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')))
+    .map(c=>`<option value="${esc(c.id)}">${esc(c.name||'Untitled campaign')}</option>`)
+    .join('');
+
+  for(const id of ['clip-campaign-filter','content-campaign-filter']){
+    const select=$(id);
+    if(!select) continue;
+    const current=select.value||'all';
+    select.innerHTML=`<option value="all">All campaigns</option>${options}`;
+    if([...select.options].some(o=>o.value===current)) select.value=current;
+  }
+}
+
+function contentRowsForClip(clip){
+  const assetId=clip.asset?.id||null;
+  return (state.content?.rows||[]).filter(row=>{
+    if(assetId && row.asset_id===assetId) return true;
+    if(!String(clip.id).startsWith('asset:') && row.clip_variant_id===clip.id) return true;
+    return false;
+  });
+}
+
+function clipPerformance(clip){
+  const rows=contentRowsForClip(clip);
+  return rows.reduce((out,row)=>{
+    out.views+=Number(row.views||0);
+    out.likes+=Number(row.likes||0);
+    out.comments+=Number(row.comments||0);
+    out.shares+=Number(row.shares||0);
+    out.saves+=Number(row.saves||0);
+    return out;
+  },{views:0,likes:0,comments:0,shares:0,saves:0});
+}
+
 function renderOverview(){
-  const d=state.dashboard||{};
+  const dashboard=state.dashboard||{};
   const clips=state.clips||{clips:[],summary:{}};
   const content=state.content||{published:[],summary:{}};
-  const accounts=state.data?.accounts||[];
   const published=content.published||[];
-  const s=d.summary||{};
+  const s=dashboard.summary||{};
 
   const totalViews=published.reduce((n,x)=>n+Number(x.views||0),0);
-  const engagements=published.reduce((n,x)=>n+Number(x.likes||0)+Number(x.comments||0)+Number(x.shares||0)+Number(x.saves||0),0);
 
   $('summary-cards').innerHTML=[
     stat('Rendered Clips',clips.summary?.total||0,'blue','✂'),
@@ -78,70 +161,145 @@ function renderOverview(){
 
   $('clip-pending-badge').textContent=fmt(clips.summary?.needs_approval||0);
   $('unread-pill').textContent=fmt(s.social_unread||0);
-  $('email-bridge').textContent=d.outreachBridge?'Connected, read only':'Not configured';
-  $('email-bridge').className=d.outreachBridge?'ok':'pending';
+
+  $('email-bridge').textContent=dashboard.outreachBridge?'Connected, read only':'Not configured';
+  $('email-bridge').className=dashboard.outreachBridge?'ok':'pending';
 
   const byPlatform={};
   for(const row of published){
-    const p=row.platform||'unknown';
-    byPlatform[p] ||= {platform:p,posts:0,views:0};
-    byPlatform[p].posts++;
-    byPlatform[p].views+=Number(row.views||0);
+    const key=row.platform||'unknown';
+    byPlatform[key] ||= {platform:key,posts:0,views:0};
+    byPlatform[key].posts++;
+    byPlatform[key].views+=Number(row.views||0);
   }
+
   const platforms=Object.values(byPlatform);
   const maxViews=Math.max(1,...platforms.map(x=>x.views));
-  $('platform-bars').innerHTML=platforms.length?platforms.map(x=>`
-    <div class="platform-row">
-      <div class="platform-name">${esc(platformLabel(x.platform))}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,Math.round(x.views/maxViews*100))}%"></div></div>
-      <div class="bar-stat"><strong>${fmt(x.posts)}</strong><span>posts</span></div>
-      <div class="bar-stat"><strong>${fmt(x.views)}</strong><span>views</span></div>
-    </div>`).join(''):'<div class="empty-row">Published posts will appear here as soon as the Distributor has completed queue rows.</div>';
+
+  $('platform-bars').innerHTML=platforms.length
+    ? platforms.map(x=>`
+      <div class="platform-row">
+        <div class="platform-name">${esc(platformLabel(x.platform))}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,Math.round(x.views/maxViews*100))}%"></div></div>
+        <div class="bar-stat"><strong>${fmt(x.posts)}</strong><span>posts</span></div>
+        <div class="bar-stat"><strong>${fmt(x.views)}</strong><span>views</span></div>
+      </div>
+    `).join('')
+    : '<div class="empty-row">Published posts are connected. Use Sync metrics to populate platform views.</div>';
 
   $('media-pipeline').innerHTML=[
     ['Rendered clips',clips.summary?.total||0],
     ['Approved clips',clips.summary?.approved||0],
     ['Queued clips',clips.summary?.queued||0],
     ['Published clips',clips.summary?.published||0]
-  ].map((x,i)=>`${i?'<div class="pipeline-arrow">↓</div>':''}<div class="pipeline-step"><span>${x[0]}</span><strong>${fmt(x[1])}</strong></div>`).join('');
+  ].map((x,i)=>`
+    ${i?'<div class="pipeline-arrow">↓</div>':''}
+    <div class="pipeline-step"><span>${x[0]}</span><strong>${fmt(x[1])}</strong></div>
+  `).join('');
 
-  $('recent-published').innerHTML=published.length?published.slice(0,12).map(x=>`
-    <tr>
-      <td><strong>${esc(x.title||'Published clip')}</strong></td>
-      <td><span class="platform-chip">${esc(platformLabel(x.platform))}</span></td>
-      <td>${esc(x.account_username||'—')}</td>
-      <td><span class="status-chip ${statusClass(x.status)}">${esc(x.status||'—')}</span></td>
-      <td>${fmt(x.views)}</td>
-      <td>${x.external_post_url?`<a class="post-url" href="${esc(x.external_post_url)}" target="_blank" rel="noopener">Open post ↗</a>`:(x.external_post_id?esc(x.external_post_id):'—')}</td>
-    </tr>`).join(''):'<tr><td class="empty-row" colspan="6">No published queue rows found yet.</td></tr>';
+  $('recent-published').innerHTML=published.length
+    ? published.slice(0,12).map(x=>`
+      <tr>
+        <td><strong>${esc(x.title||'Published clip')}</strong></td>
+        <td><span class="platform-chip">${esc(platformLabel(x.platform))}</span></td>
+        <td>${esc(x.account_username||'—')}</td>
+        <td><span class="status-chip ${statusClass(x.status)}">${esc(x.status||'—')}</span></td>
+        <td>${fmt(x.views)}</td>
+        <td>${x.external_post_url
+          ? `<a class="post-url" href="${esc(x.external_post_url)}" target="_blank" rel="noopener">Open post ↗</a>`
+          : (x.external_post_id?esc(x.external_post_id):'—')}</td>
+      </tr>
+    `).join('')
+    : '<tr><td class="empty-row" colspan="6">No published queue rows found.</td></tr>';
 
-  $('recent-clips').innerHTML=(clips.clips||[]).length?clips.clips.slice(0,8).map(x=>`
-    <div class="clip-mini">
-      <div class="clip-mini-main">
-        <strong>${esc(x.title||'Clip')}</strong>
-        <span>${esc(x.campaign_name||'No campaign')} · ${esc(x.status||'unknown')} · ${x.duration_seconds?Math.round(Number(x.duration_seconds))+' sec':'duration unknown'}</span>
+  $('recent-clips').innerHTML=(clips.clips||[]).length
+    ? clips.clips.slice(0,8).map(x=>`
+      <div class="clip-mini">
+        <div class="clip-mini-main">
+          <strong>${esc(x.title||'Clip')}</strong>
+          <span>${esc(x.campaign_name||'No campaign')} · ${esc(x.status||'unknown')} · ${x.duration_seconds?Math.round(Number(x.duration_seconds))+' sec':'duration unknown'}</span>
+        </div>
+        <div class="clip-actions">
+          ${x.render_url?`<button class="open-btn preview-clip" data-id="${esc(x.id)}">Preview</button>`:''}
+          <button class="details-btn clip-details" data-id="${esc(x.id)}">Details</button>
+        </div>
       </div>
-      <div class="clip-actions">
-        ${x.render_url?`<a class="open-btn" href="${esc(x.render_url)}" target="_blank" rel="noopener">Open clip ↗</a>`:''}
-      </div>
-    </div>`).join(''):'<div class="empty-row">No clips found in the Clipper tables yet.</div>';
+    `).join('')
+    : '<div class="empty-row">No clips found in the Clipper tables yet.</div>';
 
-  $('queue-status').textContent=(content.summary?.total_queue||0)>0?`${fmt(content.summary.total_queue)} jobs`:'Connected';
+  $('queue-status').textContent=(content.summary?.total_queue||0)>0
+    ? `${fmt(content.summary.total_queue)} jobs`
+    : 'Connected';
+
+  bindClipButtons();
 }
 
 function clipFilterRows(){
-  const filter=$('clip-status-filter')?.value||'all';
-  return (state.clips?.clips||[]).filter(x=>{
-    if(filter==='all') return true;
-    if(filter==='needs') return x.publishing_approved===false;
-    if(filter==='approved') return x.publishing_approved===true;
-    if(filter==='published') return x.published_count>0;
+  const status=$('clip-status-filter')?.value||'all';
+  const campaign=$('clip-campaign-filter')?.value||'all';
+  const search=($('clip-search')?.value||'').trim().toLowerCase();
+
+  return (state.clips?.clips||[]).filter(clip=>{
+    if(status==='needs' && clip.publishing_approved!==false) return false;
+    if(status==='approved' && clip.publishing_approved!==true) return false;
+    if(status==='published' && !(clip.published_count>0)) return false;
+    if(campaign!=='all' && clip.campaign_id!==campaign) return false;
+
+    if(search){
+      const hay=[
+        clip.title,
+        clip.hook,
+        clip.campaign_name,
+        clip.status,
+        ...(clip.distributions||[]).map(x=>x.account_username),
+        ...(clip.distributions||[]).map(x=>x.platform)
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      if(!hay.includes(search)) return false;
+    }
+
     return true;
   });
 }
 
+function publishedDropdown(clip){
+  const urls=clip.published_urls||[];
+  if(!urls.length) return '—';
+
+  return `
+    <details class="url-dropdown">
+      <summary>${urls.length} published ${urls.length===1?'post':'posts'} ▾</summary>
+      <div class="url-menu">
+        ${urls.map(u=>u.url
+          ? `<a href="${esc(u.url)}" target="_blank" rel="noopener">${esc(platformLabel(u.platform))} · ${esc(u.account_username||'account')} ↗</a>`
+          : `<span class="hook-text">${esc(platformLabel(u.platform))}: ${esc(u.id||'published')}</span>`
+        ).join('')}
+      </div>
+    </details>
+  `;
+}
+
+function distributionMarkup(clip){
+  const rows=clip.distributions||[];
+  if(!rows.length) return '<span class="hook-text">Not queued</span>';
+
+  return `
+    <div class="distribution-list">
+      ${rows.slice(0,5).map(d=>`
+        <div class="distribution-line">
+          <span class="tiny-dot ${esc(d.status||'')}"></span>
+          <b>${esc(platformLabel(d.platform))}</b>
+          <span>${esc(d.account_username||'unassigned')}</span>
+        </div>
+      `).join('')}
+      ${rows.length>5?`<span class="hook-text">+${rows.length-5} more jobs</span>`:''}
+    </div>
+  `;
+}
+
 function renderClips(){
   const s=state.clips?.summary||{};
+
   $('clip-summary').innerHTML=[
     stat('Total Clips',s.total||0,'blue','✂'),
     stat('Needs Approval',s.needs_approval||0,'orange','!'),
@@ -151,106 +309,459 @@ function renderClips(){
   ].join('');
 
   const rows=clipFilterRows();
-  $('clips-table').innerHTML=rows.length?rows.map(x=>{
-    const urls=(x.published_urls||[]).map(u=>u.url?`<a class="post-url" href="${esc(u.url)}" target="_blank" rel="noopener">${esc(platformLabel(u.platform))} ↗</a>`:`<span>${esc(platformLabel(u.platform))}: ${esc(u.id||'published')}</span>`).join('');
-    const canApprove=x.publishing_approved===false;
-    return `<tr>
-      <td>
-        <strong>${esc(x.title||'Clip')}</strong>
-        ${x.hook?`<div class="hook-text">${esc(x.hook)}</div>`:''}
-      </td>
-      <td>${esc(x.campaign_name||'—')}</td>
-      <td>${x.duration_seconds?Math.round(Number(x.duration_seconds))+'s':'—'}</td>
-      <td>
-        <span class="status-chip ${statusClass(x.status)}">${esc(x.status||'unknown')}</span>
-        <div class="hook-text">${x.publishing_approved===true?'Publishing approved':'Awaiting publishing approval'}</div>
-      </td>
-      <td>${x.render_url?`<a class="open-btn" href="${esc(x.render_url)}" target="_blank" rel="noopener">View video ↗</a>`:'—'}</td>
-      <td><div class="queue-pills"><span class="queue-pill">${fmt(x.queue_count)} total</span><span class="queue-pill">${fmt(x.pending_count)} pending</span></div></td>
-      <td><div class="url-stack">${urls||'<span>—</span>'}</div></td>
-      <td>${canApprove?`<button class="action-btn approve-clip" data-id="${esc(x.id)}">Approve Publishing</button>`:'<span class="ok">Approved</span>'}</td>
-    </tr>`;
-  }).join(''):'<tr><td class="empty-row" colspan="8">No clips match this filter.</td></tr>';
 
-  document.querySelectorAll('.approve-clip').forEach(btn=>btn.addEventListener('click',()=>approveClip(btn)));
+  $('clips-table').innerHTML=rows.length
+    ? rows.map(clip=>{
+      const performance=clipPerformance(clip);
+      const canApprove=clip.publishing_approved===false;
+      const checked=state.selectedClips.has(clip.id);
+
+      return `
+        <tr>
+          <td><input class="row-check clip-check" type="checkbox" data-id="${esc(clip.id)}" ${checked?'checked':''}></td>
+          <td>
+            <strong>${esc(clip.title||'Clip')}</strong>
+            ${clip.hook?`<div class="hook-text">${esc(clip.hook)}</div>`:''}
+            <button class="details-btn clip-details" data-id="${esc(clip.id)}">Open details</button>
+          </td>
+          <td>${esc(clip.campaign_name||'—')}</td>
+          <td>${clip.duration_seconds?Math.round(Number(clip.duration_seconds))+'s':'—'}</td>
+          <td>
+            <span class="status-chip ${statusClass(clip.status)}">${esc(clip.status||'unknown')}</span>
+            <div class="hook-text">${clip.publishing_approved===true?'Publishing approved':'Awaiting publishing approval'}</div>
+          </td>
+          <td>
+            <div class="metric-stack">
+              <strong>${fmt(performance.views)} views</strong>
+              <span>${fmt(performance.likes)} likes · ${fmt(performance.comments)} comments · ${fmt(performance.shares)} shares</span>
+            </div>
+          </td>
+          <td>${distributionMarkup(clip)}</td>
+          <td>${publishedDropdown(clip)}</td>
+          <td>
+            <div class="clip-actions">
+              ${clip.render_url?`<button class="open-btn preview-clip" data-id="${esc(clip.id)}">Preview</button>`:''}
+              ${canApprove?`<button class="action-btn approve-clip" data-id="${esc(clip.id)}">Approve</button>`:'<span class="ok">Approved</span>'}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr><td class="empty-row" colspan="9">No clips match the current filters.</td></tr>';
+
+  bindClipButtons();
+  updateBulkBar();
+
+  const selectAll=$('select-visible-clips');
+  if(selectAll){
+    selectAll.checked=rows.length>0 && rows.every(x=>state.selectedClips.has(x.id));
+    selectAll.indeterminate=rows.some(x=>state.selectedClips.has(x.id)) && !selectAll.checked;
+  }
 }
 
-async function approveClip(btn){
-  const id=btn.dataset.id;
-  btn.disabled=true;
-  btn.textContent='Approving…';
+function bindClipButtons(){
+  document.querySelectorAll('.approve-clip').forEach(btn=>{
+    btn.onclick=()=>approveClip(btn.dataset.id,btn);
+  });
+
+  document.querySelectorAll('.preview-clip').forEach(btn=>{
+    btn.onclick=()=>openVideoModal(btn.dataset.id);
+  });
+
+  document.querySelectorAll('.clip-details').forEach(btn=>{
+    btn.onclick=()=>openClipDrawer(btn.dataset.id);
+  });
+
+  document.querySelectorAll('.clip-check').forEach(input=>{
+    input.onchange=()=>{
+      const id=input.dataset.id;
+      if(input.checked) state.selectedClips.add(id);
+      else state.selectedClips.delete(id);
+      updateBulkBar();
+      const visible=clipFilterRows();
+      const selectAll=$('select-visible-clips');
+      if(selectAll){
+        selectAll.checked=visible.length>0 && visible.every(x=>state.selectedClips.has(x.id));
+        selectAll.indeterminate=visible.some(x=>state.selectedClips.has(x.id)) && !selectAll.checked;
+      }
+    };
+  });
+}
+
+function updateBulkBar(){
+  const count=state.selectedClips.size;
+  $('bulk-bar').hidden=count===0;
+  $('bulk-count').textContent=`${count} selected`;
+}
+
+async function approveClip(id,btn){
+  if(btn){
+    btn.disabled=true;
+    btn.textContent='Approving…';
+  }
+
   try{
     await api('/api/clips/action',{
       method:'POST',
-      headers:{'x-media-password':TEMP_PASSWORD},
+      headers:{'x-media-password':WRITE_KEY},
       body:{id,action:'approve'}
     });
-    await loadClips();
-    renderOverview();
+
+    state.selectedClips.delete(id);
+    await refreshMediaData();
+  }catch(error){
+    alert(error.message);
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent='Approve';
+    }
+  }
+}
+
+async function bulkApprove(){
+  const ids=[...state.selectedClips];
+  if(!ids.length) return;
+
+  const btn=$('bulk-approve');
+  btn.disabled=true;
+  btn.textContent='Approving…';
+
+  try{
+    const result=await api('/api/clips/action',{
+      method:'POST',
+      headers:{'x-media-password':WRITE_KEY},
+      body:{ids,action:'approve'}
+    });
+
+    const failed=new Set((result.results||[]).filter(x=>x.ok===false).map(x=>x.id));
+    state.selectedClips=new Set(ids.filter(id=>failed.has(id)));
+
+    await refreshMediaData();
+
+    if(result.failed) alert(`${result.approved} approved, ${result.failed} failed.`);
   }catch(error){
     alert(error.message);
   }finally{
     btn.disabled=false;
-    btn.textContent='Approve Publishing';
+    btn.textContent='Approve selected';
   }
+}
+
+function findClip(id){
+  return (state.clips?.clips||[]).find(x=>x.id===id)||null;
+}
+
+function openVideoModal(id){
+  const clip=findClip(id);
+  if(!clip||!clip.render_url) return;
+
+  $('video-modal-title').textContent=clip.title||'Clip Preview';
+  $('video-modal-subtitle').textContent=clip.campaign_name||'No campaign';
+
+  const video=$('video-player');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  video.src=clip.render_url;
+  video.load();
+
+  const perf=clipPerformance(clip);
+
+  $('video-modal-meta').innerHTML=`
+    <div class="meta-row"><span>Status</span><strong>${esc(clip.status||'unknown')} · ${clip.publishing_approved?'approved for publishing':'needs approval'}</strong></div>
+    <div class="meta-row"><span>Duration</span><strong>${clip.duration_seconds?Math.round(Number(clip.duration_seconds))+' seconds':'Unknown'}</strong></div>
+    <div class="meta-row"><span>Performance</span><strong>${fmt(perf.views)} views · ${fmt(perf.comments)} comments</strong></div>
+    <div class="meta-row"><span>Distribution</span><strong>${fmt(clip.queue_count)} jobs · ${fmt(clip.published_count)} published</strong></div>
+    <div class="meta-row"><span>File</span><strong><a class="post-url" href="${esc(clip.render_url)}" target="_blank" rel="noopener">Open original ↗</a></strong></div>
+  `;
+
+  $('video-modal').hidden=false;
+}
+
+function closeVideoModal(){
+  const video=$('video-player');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  $('video-modal').hidden=true;
+}
+
+function openClipDrawer(id){
+  const clip=findClip(id);
+  if(!clip) return;
+
+  const perf=clipPerformance(clip);
+  const distributions=clip.distributions||[];
+
+  $('drawer-title').textContent=clip.title||'Clip';
+
+  $('drawer-body').innerHTML=`
+    <div class="detail-section">
+      <h4>Overview</h4>
+      <div class="detail-grid">
+        <div class="detail-stat"><strong>${esc(clip.status||'unknown')}</strong><span>Clip status</span></div>
+        <div class="detail-stat"><strong>${clip.publishing_approved?'Approved':'Waiting'}</strong><span>Publishing approval</span></div>
+        <div class="detail-stat"><strong>${clip.duration_seconds?Math.round(Number(clip.duration_seconds))+'s':'—'}</strong><span>Duration</span></div>
+        <div class="detail-stat"><strong>${fmt(clip.published_count)}</strong><span>Published posts</span></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Campaign</h4>
+      <p>${esc(clip.campaign_name||'No campaign')}</p>
+      ${clip.hook?`<p style="margin-top:8px"><strong>Hook:</strong> ${esc(clip.hook)}</p>`:''}
+    </div>
+
+    <div class="detail-section">
+      <h4>Performance</h4>
+      <div class="detail-grid">
+        <div class="detail-stat"><strong>${fmt(perf.views)}</strong><span>Views</span></div>
+        <div class="detail-stat"><strong>${fmt(perf.likes)}</strong><span>Likes</span></div>
+        <div class="detail-stat"><strong>${fmt(perf.comments)}</strong><span>Comments</span></div>
+        <div class="detail-stat"><strong>${fmt(perf.shares)}</strong><span>Shares</span></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Video</h4>
+      ${clip.render_url
+        ? `<div class="clip-actions"><button class="action-btn preview-clip-drawer">Preview video</button><a class="open-btn" href="${esc(clip.render_url)}" target="_blank" rel="noopener">Open file ↗</a></div>`
+        : '<p>No render URL available.</p>'}
+    </div>
+
+    <div class="detail-section">
+      <h4>Distribution jobs</h4>
+      ${distributions.length
+        ? distributions.map(d=>`
+          <div class="distribution-card">
+            <div class="distribution-card-top">
+              <strong>${esc(platformLabel(d.platform))} · ${esc(d.account_username||'unassigned')}</strong>
+              <span class="status-chip ${statusClass(d.status)}">${esc(d.status||'unknown')}</span>
+            </div>
+            <small>${d.finished_at?'Finished '+esc(dateShort(d.finished_at)):(d.scheduled_at?'Scheduled '+esc(dateShort(d.scheduled_at)):'No schedule')}</small>
+            ${d.url?`<a class="post-url" href="${esc(d.url)}" target="_blank" rel="noopener">Open published post ↗</a>`:''}
+          </div>
+        `).join('')
+        : '<p>No distribution jobs are attached to this clip yet.</p>'}
+    </div>
+
+    ${clip.publishing_approved===false?`
+      <button id="drawer-approve" class="primary-inline-btn" style="width:100%">Approve Publishing</button>
+    `:''}
+  `;
+
+  const preview=$('drawer-body').querySelector('.preview-clip-drawer');
+  if(preview) preview.onclick=()=>openVideoModal(id);
+
+  const approve=$('drawer-approve');
+  if(approve) approve.onclick=()=>approveClip(id,approve);
+
+  $('detail-drawer').hidden=false;
+}
+
+function closeDrawer(){
+  $('detail-drawer').hidden=true;
+}
+
+function campaignFilterRows(){
+  const status=$('campaign-status-filter')?.value||'all';
+  const search=($('campaign-search')?.value||'').trim().toLowerCase();
+
+  return (state.campaigns?.campaigns||[]).filter(c=>{
+    if(status!=='all' && c.status!==status) return false;
+
+    if(search){
+      const hay=[
+        c.name,
+        c.description,
+        c.pool_name,
+        ...(c.channels||[]).map(x=>x.username),
+        ...(c.platforms||[]).map(platformLabel)
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      if(!hay.includes(search)) return false;
+    }
+
+    return true;
+  });
+}
+
+function renderCampaigns(){
+  const s=state.campaigns?.summary||{};
+
+  $('campaign-summary').innerHTML=[
+    stat('Campaigns',s.total||0,'blue','▤'),
+    stat('Active',s.active||0,'green','✓'),
+    stat('Clips',s.clips||0,'orange','✂'),
+    stat('Needs Approval',s.needs_approval||0,'purple','!'),
+    stat('Published Posts',s.published||0,'cyan','▶')
+  ].join('');
+
+  const rows=campaignFilterRows();
+
+  $('campaign-grid').innerHTML=rows.length
+    ? rows.map(c=>`
+      <article class="campaign-card">
+        <div class="campaign-card-head">
+          <div>
+            <h3>${esc(c.name||'Untitled campaign')}</h3>
+            <p>${esc(c.description||c.pool_name||'Media distribution campaign')}</p>
+          </div>
+          <span class="campaign-status ${c.status==='active'?'active':''}">${esc(c.status||'unknown')}</span>
+        </div>
+
+        <div class="campaign-kpis">
+          <div class="campaign-kpi"><strong>${fmt(c.clips)}</strong><span>clips</span></div>
+          <div class="campaign-kpi"><strong>${fmt(c.needs_approval)}</strong><span>needs approval</span></div>
+          <div class="campaign-kpi"><strong>${fmt(c.published)}</strong><span>published</span></div>
+          <div class="campaign-kpi"><strong>${fmt(c.views)}</strong><span>views</span></div>
+        </div>
+
+        <div class="campaign-meta">
+          <div class="campaign-meta-row"><span>Distribution pool</span><strong>${esc(c.pool_name||'Not assigned')}</strong></div>
+          <div class="campaign-meta-row"><span>Queue</span><strong>${fmt(c.ready)} ready · ${fmt(c.running)} running · ${fmt(c.failed)} failed</strong></div>
+          <div class="campaign-meta-row">
+            <span>Platforms</span>
+            <strong class="campaign-platforms">${(c.platforms||[]).length?(c.platforms||[]).map(p=>`<span class="mini-chip">${esc(platformLabel(p))}</span>`).join(''):'—'}</strong>
+          </div>
+          <div class="campaign-meta-row">
+            <span>Channels</span>
+            <strong class="campaign-channels">${(c.channels||[]).length?(c.channels||[]).slice(0,6).map(a=>`<span class="mini-chip">${esc(a.username)}</span>`).join(''):'—'}${(c.channels||[]).length>6?`<span class="mini-chip">+${c.channels.length-6}</span>`:''}</strong>
+          </div>
+        </div>
+
+        <div class="campaign-actions">
+          <button class="secondary-btn campaign-clips" data-id="${esc(c.id)}">View Clips</button>
+          <button class="secondary-btn campaign-content" data-id="${esc(c.id)}">View Content</button>
+        </div>
+      </article>
+    `).join('')
+    : '<div class="card empty-row">No campaigns match the current filters.</div>';
+
+  document.querySelectorAll('.campaign-clips').forEach(btn=>{
+    btn.onclick=()=>{
+      setView('clipping');
+      $('clip-campaign-filter').value=btn.dataset.id;
+      $('clip-status-filter').value='all';
+      renderClips();
+    };
+  });
+
+  document.querySelectorAll('.campaign-content').forEach(btn=>{
+    btn.onclick=()=>{
+      setView('content');
+      $('content-campaign-filter').value=btn.dataset.id;
+      renderContent();
+    };
+  });
 }
 
 function contentFilterRows(){
   const platform=$('content-platform-filter')?.value||'all';
   const status=$('content-status-filter')?.value||'all';
-  return (state.content?.rows||[]).filter(x=>(platform==='all'||x.platform===platform)&&(status==='all'||x.status===status));
+  const campaign=$('content-campaign-filter')?.value||'all';
+
+  return (state.content?.rows||[]).filter(row=>{
+    if(platform!=='all' && row.platform!==platform) return false;
+    if(status!=='all' && row.status!==status) return false;
+    if(campaign!=='all' && row.campaign_id!==campaign) return false;
+    return true;
+  });
 }
 
 function renderContent(){
   const rows=contentFilterRows();
+
   $('content-summary').innerHTML=[
-    stat('Queue Jobs',state.content?.summary?.total_queue||0,'blue','▶'),
-    stat('Published',state.content?.summary?.published||0,'green','✓'),
-    stat('Ready',state.content?.summary?.ready||0,'orange','•'),
-    stat('Running',state.content?.summary?.running||0,'purple','↻'),
-    stat('Views',state.content?.summary?.views||0,'cyan','↗')
+    stat('Queue Jobs',rows.length,'blue','▶'),
+    stat('Published',rows.filter(x=>x.status==='done'||x.external_post_id||x.external_post_url).length,'green','✓'),
+    stat('Ready',rows.filter(x=>x.status==='ready').length,'orange','•'),
+    stat('Running',rows.filter(x=>x.status==='running').length,'purple','↻'),
+    stat('Views',rows.reduce((n,x)=>n+Number(x.views||0),0),'cyan','↗')
   ].join('');
 
-  $('content-table').innerHTML=rows.length?rows.map(x=>`
-    <tr>
-      <td>
-        <strong>${esc(x.title||'Content')}</strong>
-        ${x.caption?`<div class="hook-text">${esc(x.caption.slice(0,140))}</div>`:''}
-      </td>
-      <td><span class="platform-chip">${esc(platformLabel(x.platform))}</span></td>
-      <td>${esc(x.account_username||'—')}</td>
-      <td><span class="status-chip ${statusClass(x.status)}">${esc(x.status||'—')}</span></td>
-      <td>${fmt(x.views)}</td>
-      <td>${fmt(x.comments)}</td>
-      <td>${x.source_url?`<a class="open-btn" href="${esc(x.source_url)}" target="_blank" rel="noopener">Clip ↗</a>`:'—'}</td>
-      <td>${x.external_post_url?`<a class="post-url" href="${esc(x.external_post_url)}" target="_blank" rel="noopener">Published post ↗</a>`:(x.external_post_id?esc(x.external_post_id):'—')}</td>
-      <td>${x.error?`<span style="color:#b91c1c">${esc(x.error)}</span>`:'—'}</td>
-    </tr>`).join(''):'<tr><td class="empty-row" colspan="9">No queue rows match this filter.</td></tr>';
+  $('content-table').innerHTML=rows.length
+    ? rows.map(x=>`
+      <tr>
+        <td>
+          <strong>${esc(x.title||'Content')}</strong>
+          <div class="hook-text">${esc(x.campaign_name||'No campaign')}</div>
+          ${x.caption?`<div class="hook-text">${esc(x.caption.slice(0,140))}</div>`:''}
+        </td>
+        <td><span class="platform-chip">${esc(platformLabel(x.platform))}</span></td>
+        <td>${esc(x.account_username||'—')}</td>
+        <td><span class="status-chip ${statusClass(x.status)}">${esc(x.status||'—')}</span></td>
+        <td>${fmt(x.views)}</td>
+        <td>${fmt(x.comments)}</td>
+        <td>${x.source_url?`<button class="open-btn preview-content" data-url="${esc(x.source_url)}" data-title="${esc(x.title||'Clip')}">Preview</button>`:'—'}</td>
+        <td>${x.external_post_url
+          ? `<a class="post-url" href="${esc(x.external_post_url)}" target="_blank" rel="noopener">Published post ↗</a>`
+          : (x.external_post_id?esc(x.external_post_id):'—')}</td>
+        <td>${x.error?`<span style="color:#b91c1c">${esc(x.error)}</span>`:'—'}</td>
+      </tr>
+    `).join('')
+    : '<tr><td class="empty-row" colspan="9">No queue rows match the current filters.</td></tr>';
+
+  document.querySelectorAll('.preview-content').forEach(btn=>{
+    btn.onclick=()=>openRawVideo(btn.dataset.url,btn.dataset.title);
+  });
+}
+
+function openRawVideo(url,title){
+  $('video-modal-title').textContent=title||'Clip Preview';
+  $('video-modal-subtitle').textContent='Content asset';
+
+  const video=$('video-player');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  video.src=url;
+  video.load();
+
+  $('video-modal-meta').innerHTML=`
+    <div class="meta-row"><span>File</span><strong><a class="post-url" href="${esc(url)}" target="_blank" rel="noopener">Open original ↗</a></strong></div>
+  `;
+
+  $('video-modal').hidden=false;
 }
 
 function renderAccounts(){
-  const data=state.data||{accounts:[]},config=state.config||{providers:{}};
+  const data=state.data||{accounts:[]};
+  const config=state.config||{providers:{}};
   const accounts=data.accounts||[];
-  $('account-count').textContent=`${accounts.length} channels`;
-  $('ig-provider-status').textContent=config.providers?.instagram?.ready?'Connector configured':'Publishing connected · add messaging OAuth';
-  $('yt-provider-status').textContent=config.providers?.youtube?.ready?'Connector configured':'Existing channel tokens in DB';
 
-  $('accounts-table').innerHTML=accounts.length?accounts.map(a=>{
-    const c=a.capabilities_json||{};
-    return `<tr>
-      <td><strong>${esc(a.username||a.display_name||'Unnamed')}</strong></td>
-      <td><span class="platform-chip">${esc(platformLabel(a.platform))}</span></td>
-      <td><span class="status-chip ${a.is_active!==false?'active':'inactive'}">${a.is_active!==false?'Active':'Paused'}</span></td>
-      <td>${c.publish?'Enabled':'—'}</td>
-      <td>${c.messages_read||c.messages_send?'Enabled':'Not connected'}</td>
-      <td>${esc(a.webhook_status||'not configured')}</td>
-      <td>${fmt(a.daily_limit||0)}</td>
-    </tr>`;
-  }).join(''):'<tr><td class="empty-row" colspan="7">No connected channels found.</td></tr>';
+  $('account-count').textContent=`${accounts.length} channels`;
+  $('ig-provider-status').textContent=config.providers?.instagram?.ready
+    ? 'Connector configured'
+    : 'Publishing connected · add messaging OAuth';
+
+  $('yt-provider-status').textContent=config.providers?.youtube?.ready
+    ? 'Connector configured'
+    : 'Existing channel tokens in DB';
+
+  $('accounts-table').innerHTML=accounts.length
+    ? accounts.map(a=>{
+      const c=a.capabilities_json||{};
+
+      return `
+        <tr>
+          <td><strong>${esc(a.username||a.display_name||'Unnamed')}</strong></td>
+          <td><span class="platform-chip">${esc(platformLabel(a.platform))}</span></td>
+          <td><span class="status-chip ${a.is_active!==false?'active':'inactive'}">${a.is_active!==false?'Active':'Paused'}</span></td>
+          <td>${c.publish?'Enabled':'—'}</td>
+          <td>${c.messages_read||c.messages_send?'Enabled':'Not connected'}</td>
+          <td>${esc(a.webhook_status||'not configured')}</td>
+          <td>${fmt(a.daily_limit||0)}</td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr><td class="empty-row" colspan="7">No connected channels found.</td></tr>';
 }
 
 function renderLeadCounts(){
   const s=state.dashboard?.summary||{};
+
   $('lead-new').textContent=fmt(Math.max(0,Number(s.social_contacts||0)-Number(s.qualified_social||0)));
   $('lead-engaged').textContent=fmt(s.social_conversations||0);
   $('lead-qualified').textContent=fmt(s.qualified_social||0);
@@ -258,59 +769,132 @@ function renderLeadCounts(){
   $('lead-client').textContent='0';
 }
 
-async function loadClips(){
-  state.clips=await api('/api/clips');
+function renderAll(){
+  populateCampaignFilters();
+  renderOverview();
   renderClips();
+  renderCampaigns();
+  renderContent();
+  renderAccounts();
+  renderLeadCounts();
 }
 
-async function loadContent(){
-  state.content=await api('/api/content');
+async function refreshMediaData(){
+  const [clips,content,campaigns]=await Promise.all([
+    api('/api/clips'),
+    api('/api/content'),
+    api('/api/campaigns')
+  ]);
+
+  state.clips=clips;
+  state.content=content;
+  state.campaigns=campaigns;
+
+  populateCampaignFilters();
+  renderOverview();
+  renderClips();
+  renderCampaigns();
   renderContent();
 }
 
 async function load(){
   try{
-    const [dashboard,data,config,clips,content]=await Promise.all([
+    const [dashboard,data,config,clips,content,campaigns]=await Promise.all([
       api('/api/dashboard'),
       api('/api/data'),
       api('/api/config'),
       api('/api/clips'),
-      api('/api/content')
+      api('/api/content'),
+      api('/api/campaigns')
     ]);
+
     state.dashboard=dashboard;
     state.data=data;
     state.config=config;
     state.clips=clips;
     state.content=content;
-    renderOverview();
-    renderClips();
-    renderContent();
-    renderAccounts();
-    renderLeadCounts();
+    state.campaigns=campaigns;
+
+    renderAll();
   }catch(error){
     console.error(error);
-    $('summary-cards').innerHTML=`<div class="notice" style="grid-column:1/-1"><div class="notice-icon">!</div><div><strong>Database setup still needs attention</strong><p>${esc(error.message)}</p></div></div>`;
+    $('summary-cards').innerHTML=`
+      <div class="notice" style="grid-column:1/-1">
+        <div class="notice-icon">!</div>
+        <div><strong>Database setup still needs attention</strong><p>${esc(error.message)}</p></div>
+      </div>
+    `;
   }
 }
 
-document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>setView(x.dataset.view)));
-document.querySelectorAll('[data-jump]').forEach(x=>x.addEventListener('click',()=>setView(x.dataset.jump)));
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click',()=>setView(el.dataset.view));
+});
+
+document.querySelectorAll('[data-jump]').forEach(el=>{
+  el.addEventListener('click',()=>setView(el.dataset.jump));
+});
+
 $('refresh-all').addEventListener('click',load);
+
+$('clip-status-filter').addEventListener('change',renderClips);
+$('clip-campaign-filter').addEventListener('change',renderClips);
+$('clip-search').addEventListener('input',renderClips);
+
+$('campaign-status-filter').addEventListener('change',renderCampaigns);
+$('campaign-search').addEventListener('input',renderCampaigns);
+
 $('content-platform-filter').addEventListener('change',renderContent);
 $('content-status-filter').addEventListener('change',renderContent);
-$('clip-status-filter').addEventListener('change',renderClips);
+$('content-campaign-filter').addEventListener('change',renderContent);
+
+$('select-visible-clips').addEventListener('change',event=>{
+  const visible=clipFilterRows();
+  for(const clip of visible){
+    if(event.target.checked) state.selectedClips.add(clip.id);
+    else state.selectedClips.delete(clip.id);
+  }
+  renderClips();
+});
+
+$('clear-selection').addEventListener('click',()=>{
+  state.selectedClips.clear();
+  renderClips();
+});
+
+$('bulk-approve').addEventListener('click',bulkApprove);
+
+document.querySelectorAll('[data-close-modal]').forEach(el=>{
+  el.addEventListener('click',closeVideoModal);
+});
+
+document.querySelectorAll('[data-close-drawer]').forEach(el=>{
+  el.addEventListener('click',closeDrawer);
+});
+
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){
+    closeVideoModal();
+    closeDrawer();
+  }
+});
+
 $('sync-metrics').addEventListener('click',async()=>{
   const btn=$('sync-metrics');
   btn.disabled=true;
   btn.textContent='Syncing…';
+
   try{
-    await api('/api/metrics/sync',{
+    const result=await api('/api/metrics/sync',{
       method:'POST',
-      headers:{'x-media-password':TEMP_PASSWORD},
+      headers:{'x-media-password':WRITE_KEY},
       body:{limit:100}
     });
-    await loadContent();
-    renderOverview();
+
+    await refreshMediaData();
+
+    const failed=(result.results||[]).filter(x=>x.status==='failed').length;
+    if(failed) alert(`Metrics sync completed with ${failed} failed posts.`);
   }catch(error){
     alert(error.message);
   }finally{
