@@ -133,8 +133,8 @@ function clipFilterRows(){
   const filter=$('clip-status-filter')?.value||'all';
   return (state.clips?.clips||[]).filter(x=>{
     if(filter==='all') return true;
-    if(filter==='needs') return x.status!=='approved'&&x.status!=='done';
-    if(filter==='approved') return x.status==='approved'||x.asset?.status==='approved';
+    if(filter==='needs') return x.publishing_approved===false;
+    if(filter==='approved') return x.publishing_approved===true;
     if(filter==='published') return x.published_count>0;
     return true;
   });
@@ -153,7 +153,7 @@ function renderClips(){
   const rows=clipFilterRows();
   $('clips-table').innerHTML=rows.length?rows.map(x=>{
     const urls=(x.published_urls||[]).map(u=>u.url?`<a class="post-url" href="${esc(u.url)}" target="_blank" rel="noopener">${esc(platformLabel(u.platform))} ↗</a>`:`<span>${esc(platformLabel(u.platform))}: ${esc(u.id||'published')}</span>`).join('');
-    const canApprove=!String(x.id).startsWith('asset:')&&x.status!=='approved';
+    const canApprove=x.publishing_approved===false;
     return `<tr>
       <td>
         <strong>${esc(x.title||'Clip')}</strong>
@@ -161,11 +161,14 @@ function renderClips(){
       </td>
       <td>${esc(x.campaign_name||'—')}</td>
       <td>${x.duration_seconds?Math.round(Number(x.duration_seconds))+'s':'—'}</td>
-      <td><span class="status-chip ${statusClass(x.status)}">${esc(x.status||'unknown')}</span></td>
+      <td>
+        <span class="status-chip ${statusClass(x.status)}">${esc(x.status||'unknown')}</span>
+        <div class="hook-text">${x.publishing_approved===true?'Publishing approved':'Awaiting publishing approval'}</div>
+      </td>
       <td>${x.render_url?`<a class="open-btn" href="${esc(x.render_url)}" target="_blank" rel="noopener">View video ↗</a>`:'—'}</td>
       <td><div class="queue-pills"><span class="queue-pill">${fmt(x.queue_count)} total</span><span class="queue-pill">${fmt(x.pending_count)} pending</span></div></td>
       <td><div class="url-stack">${urls||'<span>—</span>'}</div></td>
-      <td>${canApprove?`<button class="action-btn approve-clip" data-id="${esc(x.id)}">Approve</button>`:'<span class="ok">Approved</span>'}</td>
+      <td>${canApprove?`<button class="action-btn approve-clip" data-id="${esc(x.id)}">Approve Publishing</button>`:'<span class="ok">Approved</span>'}</td>
     </tr>`;
   }).join(''):'<tr><td class="empty-row" colspan="8">No clips match this filter.</td></tr>';
 
@@ -188,7 +191,7 @@ async function approveClip(btn){
     alert(error.message);
   }finally{
     btn.disabled=false;
-    btn.textContent='Approve';
+    btn.textContent='Approve Publishing';
   }
 }
 
