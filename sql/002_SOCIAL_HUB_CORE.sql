@@ -282,22 +282,25 @@ left join lateral (
 
 -- ------------------------------------------------------------
 -- 10. Content performance view
--- Does NOT depend on content_assets / clip_variants schema.
+-- COMPATIBLE WITH THE CURRENT DISTRIBUTOR:
+-- public.content_history stores queue_id/event metadata.
+-- public.content_publish_queue stores external_post_id/url and captions.
 -- ------------------------------------------------------------
 create or replace view public.v_social_post_performance
 with (security_invoker = true)
 as
 select
   h.id as history_id,
+  h.queue_id,
   h.campaign_id,
   h.asset_id,
-  h.account_id,
-  coalesce(ca.platform, h.platform) as platform,
+  coalesce(h.account_id, q.selected_account_id, q.account_id) as account_id,
+  coalesce(ca.platform, h.platform, q.platform) as platform,
   ca.username,
-  h.external_post_id,
-  h.external_post_url,
-  h.caption,
-  h.created_at as published_at,
+  q.external_post_id,
+  q.external_post_url,
+  coalesce(q.planned_caption, q.planned_title, h.message) as caption,
+  coalesce(q.finished_at, h.created_at) as published_at,
 
   coalesce(m.views, 0) as views,
   coalesce(m.likes, 0) as likes,
@@ -311,8 +314,11 @@ select
 
 from public.content_history h
 
+left join public.content_publish_queue q
+  on q.id = h.queue_id
+
 left join public.content_accounts ca
-  on ca.id = h.account_id
+  on ca.id = coalesce(h.account_id, q.selected_account_id, q.account_id)
 
 left join lateral (
   select
@@ -333,18 +339,27 @@ left join lateral (
   join public.tracked_link_clicks c
     on c.tracked_link_id = l.id
   where l.history_id = h.id
+     or (l.history_id is null and l.asset_id = h.asset_id)
 ) clicks on true
 
 left join lateral (
   select count(*)::bigint as conversations
   from public.social_conversations sc
   where sc.source_history_id = h.id
+     or (
+       sc.source_history_id is null
+       and sc.source_external_post_id is not null
+       and sc.source_external_post_id = q.external_post_id
+     )
 ) conv on true
 
 left join lateral (
   select count(*)::bigint as leads
   from public.growth_events ge
-  where ge.history_id = h.id
+  where (
+      ge.history_id = h.id
+      or (ge.history_id is null and ge.asset_id = h.asset_id)
+    )
     and ge.event_type in (
       'lead_captured',
       'webinar_registered',
@@ -354,8 +369,9 @@ left join lateral (
 ) leads on true
 
 where
-  h.external_post_id is not null
-  or h.status = 'published';
+  h.event_type = 'published'
+  or q.status = 'done'
+  or q.external_post_id is not null;
 
 -- ------------------------------------------------------------
 -- 11. Claim pending replies for n8n worker
