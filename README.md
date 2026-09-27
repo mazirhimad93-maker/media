@@ -1,3 +1,17 @@
+> **Current Media UI**
+>
+> Temporary workspace password: `alchemic2026`
+>
+> The current UI includes Dashboard, Clipping, Content & Distribution, Inbox placeholder, Leads, and Channels.
+> Clipping reads the existing `clip_variants` + `content_assets` tables. Content reads the real `content_publish_queue`, including `external_post_url`.
+> New content assets are held from publishing until **Approve Publishing** is clicked in the Clipping page.
+>
+> For the current Clipper/Distributor database, run the updated all-in-one migration:
+>
+> `sql/001_social_hub.sql`
+>
+> The old migration bug that referenced `content_history.external_post_url` has been removed. Published URLs come from `content_publish_queue.external_post_url`.
+>
 # Alchemic Social Hub v1
 
 A separate deployable platform that combines:
