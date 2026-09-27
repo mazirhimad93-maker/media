@@ -95,6 +95,19 @@
           <div class="filters">
             <input id="clip-search" class="filter-input" type="search" placeholder="Search clips">
             <select id="clip-campaign-filter"><option value="all">All campaigns</option></select>
+            <select id="clip-platform-filter">
+              <option value="all">All platforms</option>
+              <option value="instagram_reels">Instagram</option>
+              <option value="youtube_shorts">YouTube</option>
+              <option value="tiktok_video">TikTok</option>
+              <option value="tiktok">TikTok legacy</option>
+            </select>
+            <select id="clip-date-filter">
+              <option value="all">All dates</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
             <select id="clip-status-filter">
               <option value="all">All clips</option>
               <option value="needs">Needs approval</option>
@@ -142,6 +155,12 @@
           <div class="filters">
             <button id="sync-metrics" class="secondary-btn">Sync metrics</button>
             <select id="content-campaign-filter"><option value="all">All campaigns</option></select>
+            <select id="content-date-filter">
+              <option value="all">All dates</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
             <select id="content-status-filter">
               <option value="all">All statuses</option>
               <option value="done">Published</option>
