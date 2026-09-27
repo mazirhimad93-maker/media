@@ -45,15 +45,17 @@ export default async (request) => {
     });
 
     const heldRows=await supabaseRequest(
-      `content_publish_queue?asset_id=eq.${encodeURIComponent(assetId)}&media_approval_hold=eq.true&select=id,scheduled_at,media_original_scheduled_at`
+      `content_publish_queue?asset_id=eq.${encodeURIComponent(assetId)}&media_approval_hold=eq.true&select=id,scheduled_at,next_attempt_at,media_original_scheduled_at,media_original_next_attempt_at`
     ).catch(()=>[]);
 
     for(const q of heldRows||[]){
       const original=q.media_original_scheduled_at ? new Date(q.media_original_scheduled_at) : null;
+      const originalNext=q.media_original_next_attempt_at ? new Date(q.media_original_next_attempt_at) : null;
       const releaseAt=original && original.getTime()>Date.now() ? original.toISOString() : approvedAt;
+      const releaseNext=originalNext && originalNext.getTime()>Date.now() ? originalNext.toISOString() : null;
       await supabaseRequest(`content_publish_queue?id=eq.${encodeURIComponent(q.id)}`,{
         method:'PATCH',
-        body:{media_approval_hold:false,scheduled_at:releaseAt,updated_at:approvedAt}
+        body:{media_approval_hold:false,scheduled_at:releaseAt,next_attempt_at:releaseNext,updated_at:approvedAt}
       });
     }
 
