@@ -18,6 +18,7 @@
       <nav class="nav-list">
         <button class="nav-item active" data-view="overview"><span class="nav-icon">▦</span><span>Dashboard</span></button>
         <button class="nav-item" data-view="clipping"><span class="nav-icon">✂</span><span>Clipping</span><span id="clip-pending-badge" class="nav-badge">0</span></button>
+        <button class="nav-item" data-view="campaigns"><span class="nav-icon">▤</span><span>Campaigns</span></button>
         <button class="nav-item" data-view="content"><span class="nav-icon">▶</span><span>Content</span></button>
         <button class="nav-item" data-view="inbox"><span class="nav-icon">✉</span><span>Inbox</span><span id="unread-pill" class="nav-badge">0</span></button>
         <button class="nav-item" data-view="leads"><span class="nav-icon">◉</span><span>Leads</span></button>
@@ -92,6 +93,8 @@
         <div class="section-top">
           <div><h2>Clipping</h2><p>Review rendered clips, open the output, approve it, and see where it has been distributed.</p></div>
           <div class="filters">
+            <input id="clip-search" class="filter-input" type="search" placeholder="Search clips">
+            <select id="clip-campaign-filter"><option value="all">All campaigns</option></select>
             <select id="clip-status-filter">
               <option value="all">All clips</option>
               <option value="needs">Needs approval</option>
@@ -101,14 +104,36 @@
           </div>
         </div>
         <div class="stats-grid compact" id="clip-summary"></div>
+        <div id="bulk-bar" class="bulk-bar" hidden>
+          <div><strong id="bulk-count">0 selected</strong><span>Approve selected clips for publishing.</span></div>
+          <div class="bulk-actions"><button id="clear-selection" class="secondary-btn">Clear</button><button id="bulk-approve" class="primary-inline-btn">Approve selected</button></div>
+        </div>
         <article class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Clip</th><th>Campaign</th><th>Duration</th><th>Status</th><th>Video</th><th>Queue</th><th>Published</th><th>Action</th></tr></thead>
+              <thead><tr><th><input id="select-visible-clips" type="checkbox" aria-label="Select visible clips"></th><th>Clip</th><th>Campaign</th><th>Duration</th><th>Status</th><th>Performance</th><th>Distribution</th><th>Published</th><th>Action</th></tr></thead>
               <tbody id="clips-table"></tbody>
             </table>
           </div>
         </article>
+      </section>
+
+
+      <section class="view" id="view-campaigns">
+        <div class="section-top">
+          <div><h2>Campaigns</h2><p>See each campaign from rendered clips through distribution and published results.</p></div>
+          <div class="filters">
+            <input id="campaign-search" class="filter-input" type="search" placeholder="Search campaigns">
+            <select id="campaign-status-filter">
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+        </div>
+        <div class="stats-grid compact" id="campaign-summary"></div>
+        <div id="campaign-grid" class="campaign-grid"></div>
       </section>
 
       <section class="view" id="view-content">
@@ -116,6 +141,7 @@
           <div><h2>Content & Distribution</h2><p>Every queued and published post, including the external result URL.</p></div>
           <div class="filters">
             <button id="sync-metrics" class="secondary-btn">Sync metrics</button>
+            <select id="content-campaign-filter"><option value="all">All campaigns</option></select>
             <select id="content-status-filter">
               <option value="all">All statuses</option>
               <option value="done">Published</option>
@@ -184,6 +210,23 @@
         </article>
       </section>
     </main>
+  </div>
+
+  <div id="video-modal" class="modal-shell" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="video-modal-card">
+      <div class="modal-head"><div><h3 id="video-modal-title">Clip Preview</h3><p id="video-modal-subtitle"></p></div><button class="modal-close" data-close-modal>×</button></div>
+      <video id="video-player" controls playsinline preload="metadata"></video>
+      <div id="video-modal-meta" class="modal-meta"></div>
+    </div>
+  </div>
+
+  <div id="detail-drawer" class="drawer-shell" hidden>
+    <div class="drawer-backdrop" data-close-drawer></div>
+    <aside class="detail-drawer">
+      <div class="drawer-head"><div><span class="eyebrow-small">CLIP DETAILS</span><h3 id="drawer-title">Clip</h3></div><button class="modal-close" data-close-drawer>×</button></div>
+      <div id="drawer-body" class="drawer-body"></div>
+    </aside>
   </div>
 
   <script type="module" src="/app.js"></script>
