@@ -314,5 +314,24 @@ $('refresh-all').addEventListener('click',load);
 $('content-platform-filter').addEventListener('change',renderContent);
 $('content-status-filter').addEventListener('change',renderContent);
 $('clip-status-filter').addEventListener('change',renderClips);
+$('sync-metrics').addEventListener('click',async()=>{
+  const btn=$('sync-metrics');
+  btn.disabled=true;
+  btn.textContent='Syncing…';
+  try{
+    await api('/api/metrics/sync',{
+      method:'POST',
+      headers:{'x-media-password':TEMP_PASSWORD},
+      body:{limit:100}
+    });
+    await loadContent();
+    renderOverview();
+  }catch(error){
+    alert(error.message);
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Sync metrics';
+  }
+});
 
 if(sessionStorage.getItem('alchemic_media_unlocked')==='1') unlock();
