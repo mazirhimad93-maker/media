@@ -998,4 +998,6 @@ $('sync-metrics').addEventListener('click',async()=>{
   }
 });
 
+const initialView=new URLSearchParams(window.location.search).get('view');
+if(['overview','clipping','campaigns','content','inbox','leads','accounts'].includes(initialView)) setView(initialView);
 load();
