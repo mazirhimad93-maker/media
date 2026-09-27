@@ -33,6 +33,7 @@ export default async () => {
         title:v.title||v.headline||asset?.file_name||'Clip',
         hook:v.hook||asset?.metadata?.hook||null,
         status:v.status||asset?.status||'unknown',
+        publishing_approved:asset ? (asset.media_publish_approved ?? true) : false,
         render_url:v.render_url||v.rendered_url||asset?.source_url||null,
         duration_seconds:v.duration_seconds||asset?.duration_seconds||asset?.duration_sec||null,
         created_at:v.created_at||asset?.created_at||null,
@@ -42,7 +43,9 @@ export default async () => {
           file_name:asset.file_name,
           source_url:asset.source_url,
           status:asset.status,
-          publish_count:asset.publish_count||0
+          publish_count:asset.publish_count||0,
+          media_publish_approved:asset.media_publish_approved ?? true,
+          media_approved_at:asset.media_approved_at||null
         }:null,
         queue_count:queues.length,
         pending_count:pending.length,
@@ -63,11 +66,12 @@ export default async () => {
         title:a.file_name||'Video asset',
         hook:a.metadata?.hook||null,
         status:a.status||'unknown',
+        publishing_approved:a.media_publish_approved ?? true,
         render_url:a.source_url||null,
         duration_seconds:a.duration_seconds||a.duration_sec||null,
         created_at:a.created_at||null,
         updated_at:a.updated_at||null,
-        asset:{id:a.id,file_name:a.file_name,source_url:a.source_url,status:a.status,publish_count:a.publish_count||0},
+        asset:{id:a.id,file_name:a.file_name,source_url:a.source_url,status:a.status,publish_count:a.publish_count||0,media_publish_approved:a.media_publish_approved ?? true,media_approved_at:a.media_approved_at||null},
         queue_count:queues.length,
         pending_count:queues.filter(q=>!['done','failed'].includes(q.status)).length,
         published_count:published.length,
@@ -81,8 +85,8 @@ export default async () => {
       clips,
       summary:{
         total:clips.length,
-        needs_approval:clips.filter(x=>x.status!=='approved'&&x.status!=='done').length,
-        approved:clips.filter(x=>x.status==='approved'||x.asset?.status==='approved').length,
+        needs_approval:clips.filter(x=>x.publishing_approved===false).length,
+        approved:clips.filter(x=>x.publishing_approved===true).length,
         queued:clips.filter(x=>x.pending_count>0).length,
         published:clips.filter(x=>x.published_count>0).length
       }
