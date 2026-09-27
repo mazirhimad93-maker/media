@@ -1,0 +1,72 @@
+{
+  "name": "ALCHEMIC SOCIAL METRICS SYNC V1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "91b3ca04-1a65-4cc3-920d-000000000001",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-420, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALCHEMIC_SOCIAL_HUB_URL + '/api/metrics/sync' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-connector-admin-token",
+              "value": "={{ $env.ALCHEMIC_SOCIAL_HUB_ADMIN_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"limit\":100}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "91b3ca04-1a65-4cc3-920d-000000000002",
+      "name": "Sync Post Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-150, 0]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Sync Post Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "91b3ca04-1a65-4cc3-920d-000000000099",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

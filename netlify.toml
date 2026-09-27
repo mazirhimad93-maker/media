@@ -1,0 +1,83 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."refresh-instagram-tokens"]
+  schedule = "0 3 * * *"
+
+[[redirects]]
+  from = "/api/config"
+  to = "/.netlify/functions/config"
+  status = 200
+[[redirects]]
+  from = "/api/data"
+  to = "/.netlify/functions/connector-data"
+  status = 200
+[[redirects]]
+  from = "/api/dashboard"
+  to = "/.netlify/functions/dashboard"
+  status = 200
+[[redirects]]
+  from = "/api/inbox"
+  to = "/.netlify/functions/inbox"
+  status = 200
+[[redirects]]
+  from = "/api/conversation"
+  to = "/.netlify/functions/conversation"
+  status = 200
+[[redirects]]
+  from = "/api/social/reply"
+  to = "/.netlify/functions/social-reply"
+  status = 200
+[[redirects]]
+  from = "/api/social/lead-status"
+  to = "/.netlify/functions/lead-status"
+  status = 200
+[[redirects]]
+  from = "/api/social/dispatch"
+  to = "/.netlify/functions/dispatch-social"
+  status = 200
+[[redirects]]
+  from = "/api/metrics/sync"
+  to = "/.netlify/functions/metrics-sync"
+  status = 200
+[[redirects]]
+  from = "/api/meta/webhook"
+  to = "/.netlify/functions/meta-webhook"
+  status = 200
+[[redirects]]
+  from = "/api/links/create"
+  to = "/.netlify/functions/create-link"
+  status = 200
+[[redirects]]
+  from = "/api/oauth/start"
+  to = "/.netlify/functions/oauth-start"
+  status = 200
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+[[redirects]]
+  from = "/oauth/youtube/callback"
+  to = "/.netlify/functions/oauth-youtube-callback"
+  status = 200
+[[redirects]]
+  from = "/oauth/instagram/callback"
+  to = "/.netlify/functions/oauth-instagram-callback"
+  status = 200
+[[redirects]]
+  from = "/go/:slug"
+  to = "/.netlify/functions/track-link?slug=:slug"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "same-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com https://www.instagram.com"

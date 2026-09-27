@@ -1,0 +1,349 @@
+-- Alchemic Social Hub v1
+-- TARGET DATABASE: Content / Clipper / Distributor Supabase only.
+-- This migration DOES NOT target or modify the separate Outreach/Email database.
+-- Safe to re-run: all schema additions are idempotent where PostgreSQL supports it.
+
+create extension if not exists pgcrypto;
+
+-- Bring the existing content_accounts table up to the connector/social-inbox contract.
+alter table public.content_accounts add column if not exists display_name text;
+alter table public.content_accounts add column if not exists token_type text default 'Bearer';
+alter table public.content_accounts add column if not exists scope text;
+alter table public.content_accounts add column if not exists metadata jsonb not null default '{}'::jsonb;
+alter table public.content_accounts add column if not exists error_message text;
+alter table public.content_accounts add column if not exists capabilities_json jsonb not null default '{}'::jsonb;
+alter table public.content_accounts add column if not exists webhook_status text not null default 'not_configured';
+alter table public.content_accounts add column if not exists last_inbox_sync_at timestamptz;
+
+-- Contacts are platform identities. Email/phone can be filled later after a lead opts in.
+create table if not exists public.social_contacts (
+  id uuid primary key default gen_random_uuid(),
+  platform text not null,
+  platform_user_id text not null,
+  username text,
+  display_name text,
+  email text,
+  phone text,
+  lead_status text not null default 'new'
+    check (lead_status in ('new','engaged','qualified','registered','booked','client','not_fit','archived')),
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(platform, platform_user_id)
+);
+
+create table if not exists public.social_conversations (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.content_accounts(id) on delete cascade,
+  contact_id uuid not null references public.social_contacts(id) on delete cascade,
+  platform text not null,
+  platform_thread_id text not null,
+  source_history_id uuid references public.content_history(id) on delete set null,
+  source_external_post_id text,
+  status text not null default 'open'
+    check (status in ('open','pending','qualified','booked','closed','archived')),
+  unread_count integer not null default 0 check (unread_count >= 0),
+  assigned_to text,
+  human_takeover boolean not null default true,
+  labels text[] not null default '{}'::text[],
+  last_message_at timestamptz,
+  last_inbound_at timestamptz,
+  last_outbound_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(account_id, platform_thread_id)
+);
+
+create table if not exists public.social_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.social_conversations(id) on delete cascade,
+  account_id uuid not null references public.content_accounts(id) on delete cascade,
+  contact_id uuid not null references public.social_contacts(id) on delete cascade,
+  platform_message_id text,
+  direction text not null check (direction in ('inbound','outbound')),
+  sender_role text not null default 'lead' check (sender_role in ('lead','account','system')),
+  message_type text not null default 'text',
+  body text,
+  media_url text,
+  in_reply_to_platform_message_id text,
+  delivery_status text not null default 'received'
+    check (delivery_status in ('received','queued','sent','delivered','read','failed')),
+  sent_at timestamptz not null default now(),
+  raw_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists social_messages_platform_mid_uidx
+  on public.social_messages(account_id, platform_message_id)
+  where platform_message_id is not null;
+
+create index if not exists social_messages_conversation_sent_idx
+  on public.social_messages(conversation_id, sent_at desc);
+
+create table if not exists public.social_outbox (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.social_conversations(id) on delete cascade,
+  account_id uuid not null references public.content_accounts(id) on delete cascade,
+  contact_id uuid not null references public.social_contacts(id) on delete cascade,
+  reply_mode text not null default 'dm' check (reply_mode in ('dm','comment_reply','private_reply')),
+  target_platform_id text,
+  body text not null,
+  status text not null default 'pending'
+    check (status in ('pending','sending','sent','failed','cancelled')),
+  attempts integer not null default 0,
+  max_attempts integer not null default 5,
+  platform_message_id text,
+  last_error text,
+  locked_at timestamptz,
+  locked_by text,
+  queued_at timestamptz not null default now(),
+  sent_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists social_outbox_pending_idx
+  on public.social_outbox(status, queued_at)
+  where status in ('pending','failed');
+
+create table if not exists public.social_webhook_events (
+  id bigint generated by default as identity primary key,
+  provider text not null,
+  event_key text,
+  account_platform_id text,
+  event_type text,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'received' check (status in ('received','processed','ignored','failed')),
+  error_message text,
+  received_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+
+create unique index if not exists social_webhook_events_event_key_uidx
+  on public.social_webhook_events(provider, event_key)
+  where event_key is not null;
+
+create table if not exists public.tracked_links (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  destination_url text not null,
+  label text,
+  campaign_id uuid references public.content_campaigns(id) on delete set null,
+  asset_id uuid references public.content_assets(id) on delete set null,
+  history_id uuid references public.content_history(id) on delete set null,
+  account_id uuid references public.content_accounts(id) on delete set null,
+  utm jsonb not null default '{}'::jsonb,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.tracked_link_clicks (
+  id bigint generated by default as identity primary key,
+  tracked_link_id uuid not null references public.tracked_links(id) on delete cascade,
+  anonymous_id text,
+  ip_hash text,
+  user_agent text,
+  referer text,
+  query_params jsonb not null default '{}'::jsonb,
+  occurred_at timestamptz not null default now()
+);
+
+create index if not exists tracked_link_clicks_link_time_idx
+  on public.tracked_link_clicks(tracked_link_id, occurred_at desc);
+
+create table if not exists public.growth_events (
+  id bigint generated by default as identity primary key,
+  event_type text not null,
+  occurred_at timestamptz not null default now(),
+  platform text,
+  source text,
+  campaign_id uuid references public.content_campaigns(id) on delete set null,
+  asset_id uuid references public.content_assets(id) on delete set null,
+  history_id uuid references public.content_history(id) on delete set null,
+  account_id uuid references public.content_accounts(id) on delete set null,
+  social_contact_id uuid references public.social_contacts(id) on delete set null,
+  social_conversation_id uuid references public.social_conversations(id) on delete set null,
+  funnel_lead_id uuid references public.funnel_leads(id) on delete set null,
+  tracked_link_id uuid references public.tracked_links(id) on delete set null,
+  numeric_value numeric,
+  metadata jsonb not null default '{}'::jsonb
+);
+
+create index if not exists growth_events_type_time_idx on public.growth_events(event_type, occurred_at desc);
+create index if not exists growth_events_history_idx on public.growth_events(history_id) where history_id is not null;
+create index if not exists growth_events_conversation_idx on public.growth_events(social_conversation_id) where social_conversation_id is not null;
+
+-- Latest metric snapshot per published post.
+create or replace view public.v_social_post_performance
+with (security_invoker = true)
+as
+select
+  h.id as history_id,
+  h.campaign_id,
+  h.asset_id,
+  a.clip_variant_id,
+  h.account_id,
+  ca.platform,
+  ca.username,
+  h.external_post_id,
+  h.external_post_url,
+  h.caption,
+  h.created_at as published_at,
+  coalesce(m.views, 0) as views,
+  coalesce(m.likes, 0) as likes,
+  coalesce(m.comments, 0) as comments,
+  coalesce(m.shares, 0) as shares,
+  coalesce(m.saves, 0) as saves,
+  coalesce(clicks.clicks, 0) as link_clicks,
+  coalesce(conv.conversations, 0) as conversations,
+  coalesce(leads.leads, 0) as leads
+from public.content_history h
+left join public.content_accounts ca on ca.id = h.account_id
+left join public.content_assets a on a.id = h.asset_id
+left join lateral (
+  select p.views, p.likes, p.comments, p.shares, p.saves
+  from public.post_metrics_snapshots p
+  where p.history_id = h.id
+  order by p.captured_at desc
+  limit 1
+) m on true
+left join lateral (
+  select count(*)::bigint as clicks
+  from public.tracked_links l
+  join public.tracked_link_clicks c on c.tracked_link_id = l.id
+  where l.history_id = h.id
+) clicks on true
+left join lateral (
+  select count(*)::bigint as conversations
+  from public.social_conversations sc
+  where sc.source_history_id = h.id
+) conv on true
+left join lateral (
+  select count(*)::bigint as leads
+  from public.growth_events ge
+  where ge.history_id = h.id and ge.event_type in ('lead_captured','webinar_registered','call_booked')
+) leads on true
+where h.external_post_id is not null or h.status = 'published';
+
+create or replace view public.v_social_inbox
+with (security_invoker = true)
+as
+select
+  sc.id as conversation_id,
+  sc.platform,
+  sc.status,
+  sc.unread_count,
+  sc.last_message_at,
+  sc.last_inbound_at,
+  sc.last_outbound_at,
+  sc.labels,
+  sc.account_id,
+  ca.username as account_username,
+  ca.display_name as account_display_name,
+  c.id as contact_id,
+  c.username as contact_username,
+  c.display_name as contact_display_name,
+  c.email,
+  c.phone,
+  c.lead_status,
+  sc.source_history_id,
+  sc.source_external_post_id,
+  lm.body as last_message,
+  lm.direction as last_direction,
+  lm.message_type as last_message_type
+from public.social_conversations sc
+join public.content_accounts ca on ca.id = sc.account_id
+join public.social_contacts c on c.id = sc.contact_id
+left join lateral (
+  select m.body, m.direction, m.message_type
+  from public.social_messages m
+  where m.conversation_id = sc.id
+  order by m.sent_at desc, m.created_at desc
+  limit 1
+) lm on true;
+
+-- Atomic-ish claim function for a small manual outbox worker.
+-- Kept in public but EXECUTE is revoked from public/anon/authenticated; service_role only.
+create or replace function public.claim_social_outbox(p_worker text, p_limit integer default 10)
+returns setof public.social_outbox
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  return query
+  with picked as (
+    select o.id
+    from public.social_outbox o
+    where o.status = 'pending'
+      and o.attempts < o.max_attempts
+    order by o.queued_at asc
+    for update skip locked
+    limit greatest(1, least(coalesce(p_limit, 10), 50))
+  )
+  update public.social_outbox o
+     set status = 'sending',
+         attempts = o.attempts + 1,
+         locked_at = now(),
+         locked_by = p_worker,
+         updated_at = now()
+  from picked
+  where o.id = picked.id
+  returning o.*;
+end;
+$$;
+
+-- New Social Hub tables are server-only. Netlify/n8n use service_role.
+alter table public.social_contacts enable row level security;
+alter table public.social_conversations enable row level security;
+alter table public.social_messages enable row level security;
+alter table public.social_outbox enable row level security;
+alter table public.social_webhook_events enable row level security;
+alter table public.tracked_links enable row level security;
+alter table public.tracked_link_clicks enable row level security;
+alter table public.growth_events enable row level security;
+
+revoke all on table public.social_contacts from anon, authenticated;
+revoke all on table public.social_conversations from anon, authenticated;
+revoke all on table public.social_messages from anon, authenticated;
+revoke all on table public.social_outbox from anon, authenticated;
+revoke all on table public.social_webhook_events from anon, authenticated;
+revoke all on table public.tracked_links from anon, authenticated;
+revoke all on table public.tracked_link_clicks from anon, authenticated;
+revoke all on table public.growth_events from anon, authenticated;
+revoke all on table public.v_social_post_performance from anon, authenticated;
+revoke all on table public.v_social_inbox from anon, authenticated;
+revoke execute on function public.claim_social_outbox(text, integer) from public, anon, authenticated;
+grant execute on function public.claim_social_outbox(text, integer) to service_role;
+
+grant select, insert, update, delete on table public.social_contacts to service_role;
+grant select, insert, update, delete on table public.social_conversations to service_role;
+grant select, insert, update, delete on table public.social_messages to service_role;
+grant select, insert, update, delete on table public.social_outbox to service_role;
+grant select, insert, update, delete on table public.social_webhook_events to service_role;
+grant select, insert, update, delete on table public.tracked_links to service_role;
+grant select, insert, update, delete on table public.tracked_link_clicks to service_role;
+grant select, insert, update, delete on table public.growth_events to service_role;
+grant select on table public.v_social_post_performance to service_role;
+grant select on table public.v_social_inbox to service_role;
+
+grant usage, select on all sequences in schema public to service_role;
+
+-- Helpful seed: mark capabilities based on currently-known platform type.
+update public.content_accounts
+set capabilities_json = case
+  when platform = 'instagram_reels' then capabilities_json || '{"publish":true}'::jsonb
+  when platform = 'youtube_shorts' then capabilities_json || '{"publish":true,"analytics":true}'::jsonb
+  else capabilities_json
+end,
+updated_at = now();
+
+-- Verification queries (read only):
+-- select id, platform, username, scope, capabilities_json, webhook_status from public.content_accounts order by created_at desc;
+-- select * from public.v_social_inbox order by last_message_at desc nulls last limit 20;
+-- select * from public.v_social_post_performance order by views desc limit 20;

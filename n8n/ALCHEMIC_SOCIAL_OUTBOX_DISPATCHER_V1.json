@@ -1,0 +1,72 @@
+{
+  "name": "ALCHEMIC SOCIAL OUTBOX DISPATCHER V1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "f8a9c0f0-9f5d-4d3b-8f56-000000000001",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-420, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALCHEMIC_SOCIAL_HUB_URL + '/api/social/dispatch' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-connector-admin-token",
+              "value": "={{ $env.ALCHEMIC_SOCIAL_HUB_ADMIN_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"limit\":10}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "f8a9c0f0-9f5d-4d3b-8f56-000000000002",
+      "name": "Dispatch Pending Social Replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-150, 0]
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Pending Social Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "f8a9c0f0-9f5d-4d3b-8f56-000000000099",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

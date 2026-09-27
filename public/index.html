@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Alchemic Social Hub</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <section id="unlock" class="unlock-screen">
+    <div class="unlock-card">
+      <div class="brand-mark">A</div>
+      <p class="eyebrow">ALCHEMIC GROWTH OS</p>
+      <h1>Social Hub</h1>
+      <p class="muted">Content performance, social inbox, connected channels, and a read-only view of email replies.</p>
+      <form id="unlock-form"><input id="admin-token" type="password" placeholder="Internal access token" autocomplete="off" required><button>Open Social Hub</button></form>
+      <p class="error" id="unlock-error" hidden></p>
+    </div>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <aside class="sidebar">
+      <div class="logo-row"><div class="brand-mark small-mark">A</div><div><strong>Alchemic</strong><span>Social Hub</span></div></div>
+      <nav>
+        <button class="nav active" data-view="overview">Overview</button>
+        <button class="nav" data-view="inbox">Unified Inbox <span id="unread-pill" class="pill">0</span></button>
+        <button class="nav" data-view="content">Content Performance</button>
+        <button class="nav" data-view="accounts">Connected Accounts</button>
+      </nav>
+      <div class="sidebar-foot"><span id="system-state" class="dot"></span><span id="system-label">Connected</span><button id="refresh-all" class="link-btn">Refresh</button></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar"><div><p class="eyebrow">ACQUISITION COMMAND CENTER</p><h1 id="view-title">Overview</h1></div><div class="top-actions"><span class="badge" id="email-bridge">Email bridge…</span><button id="sync-metrics" class="ghost">Sync metrics</button></div></header>
+
+      <section class="view active" id="view-overview">
+        <div class="metrics" id="summary-cards"></div>
+        <div class="grid-2">
+          <article class="panel"><div class="panel-head"><div><h2>Channel performance</h2><p>Published content → views → conversations → leads.</p></div></div><div class="table-wrap"><table><thead><tr><th>Platform</th><th>Posts</th><th>Views</th><th>Comments</th><th>Clicks</th><th>Conversations</th><th>Leads</th></tr></thead><tbody id="platform-table"></tbody></table></div></article>
+          <article class="panel"><div class="panel-head"><div><h2>Recent activity</h2><p>Newest social and email replies.</p></div></div><div class="activity" id="recent-activity"></div></article>
+        </div>
+        <article class="panel"><div class="panel-head"><div><h2>Top content</h2><p>Uses your existing <code>content_history</code> + <code>post_metrics_snapshots</code> lineage.</p></div></div><div class="table-wrap"><table><thead><tr><th>Post</th><th>Platform</th><th>Account</th><th>Views</th><th>Engagement</th><th>Clicks</th><th>Leads</th></tr></thead><tbody id="top-posts"></tbody></table></div></article>
+      </section>
+
+      <section class="view" id="view-inbox">
+        <div class="inbox-layout">
+          <aside class="threads panel">
+            <div class="inbox-tools"><div class="segmented"><button class="seg active" data-inbox="all">All</button><button class="seg" data-inbox="social">Social</button><button class="seg" data-inbox="email">Email</button></div><button id="reload-inbox" class="icon-btn">↻</button></div>
+            <div id="thread-list" class="thread-list"></div>
+          </aside>
+          <article class="conversation panel">
+            <div id="conversation-empty" class="empty"><h2>Select a conversation</h2><p>Social replies can be answered here. Email replies are displayed read-only so the existing Outreach Engine stays untouched.</p></div>
+            <div id="conversation-wrap" hidden>
+              <div class="conversation-head"><div><h2 id="conversation-name"></h2><p id="conversation-meta"></p></div><select id="lead-status-select" class="status-select"><option value="new">New</option><option value="engaged">Engaged</option><option value="qualified">Qualified</option><option value="registered">Registered</option><option value="booked">Booked</option><option value="client">Client</option><option value="not_fit">Not fit</option><option value="archived">Archived</option></select></div>
+              <div id="messages" class="messages"></div>
+              <form id="reply-form" class="composer"><textarea id="reply-body" rows="3" placeholder="Write a manual reply…"></textarea><div><span class="small-text">No AI. Reply is queued to n8n.</span><button type="submit">Queue reply</button></div></form>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-content">
+        <div class="metrics" id="content-summary"></div>
+        <article class="panel"><div class="panel-head"><div><h2>Clip & post performance</h2><p>Sorts your published distributor output by views while keeping clip lineage.</p></div></div><div class="table-wrap"><table><thead><tr><th>Post</th><th>Clip</th><th>Platform</th><th>Views</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th><th>Clicks</th><th>Leads</th></tr></thead><tbody id="content-table"></tbody></table></div></article>
+      </section>
+
+      <section class="view" id="view-accounts">
+        <div class="grid-2">
+          <article class="panel provider"><h2>Instagram</h2><p>Reuses the existing Distributor connector, upgraded for messages + comments.</p><strong id="ig-provider-status">Checking…</strong><button id="instagram-connect">Connect / upgrade Instagram</button></article>
+          <article class="panel provider"><h2>YouTube</h2><p>Reuses the existing YouTube OAuth connection for publishing + metrics.</p><strong id="yt-provider-status">Checking…</strong><button id="youtube-connect">Connect YouTube</button></article>
+        </div>
+        <article class="panel"><div class="panel-head"><div><h2>Connection settings</h2><p>Optional campaign/pool assignment continues to feed the Distributor.</p></div></div><div class="form-grid"><label>Campaign<select id="campaign"><option value="">No campaign assignment</option></select></label><label>Pool<select id="pool"><option value="">Campaign pool / create one</option></select></label><label>Daily<input id="daily-limit" type="number" value="4"></label><label>Weekly<input id="weekly-limit" type="number" value="28"></label><label>Gap (min)<input id="min-gap" type="number" value="60"></label></div><div class="callbacks"><p><strong>Meta webhook callback</strong><code id="meta-webhook-url"></code></p><p><strong>Meta verify token</strong><span>Use the value from your Netlify environment.</span></p></div></article>
+        <article class="panel"><div class="panel-head"><div><h2>Accounts</h2><p>Publishing and inbox capabilities from the same account row.</p></div><span id="account-count" class="badge"></span></div><div class="table-wrap"><table><thead><tr><th>Account</th><th>Platform</th><th>Campaign</th><th>Publishing</th><th>Inbox</th><th>Webhook</th><th>Health</th></tr></thead><tbody id="accounts-table"></tbody></table></div></article>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
