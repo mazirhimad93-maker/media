@@ -8,18 +8,27 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="app-shell">
+  <section id="temp-lock" class="temp-lock">
+    <form id="temp-lock-form" class="temp-lock-card">
+      <div class="brand-icon lock-logo">A</div>
+      <h1>Alchemic Media</h1>
+      <p>Temporary workspace access</p>
+      <input id="temp-password" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit" class="primary-btn">Open workspace</button>
+      <span id="temp-lock-error" class="lock-error"></span>
+    </form>
+  </section>
+
+  <div id="app-shell" class="app-shell" hidden>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">A</div>
-        <div>
-          <strong>Alchemic Media</strong>
-          <span>Growth OS</span>
-        </div>
+        <div><strong>Alchemic Media</strong><span>Growth OS</span></div>
       </div>
 
       <nav class="nav-list">
         <button class="nav-item active" data-view="overview"><span class="nav-icon">▦</span><span>Dashboard</span></button>
+        <button class="nav-item" data-view="clipping"><span class="nav-icon">✂</span><span>Clipping</span><span id="clip-pending-badge" class="nav-badge">0</span></button>
         <button class="nav-item" data-view="content"><span class="nav-icon">▶</span><span>Content</span></button>
         <button class="nav-item" data-view="inbox"><span class="nav-icon">✉</span><span>Inbox</span><span id="unread-pill" class="nav-badge">0</span></button>
         <button class="nav-item" data-view="leads"><span class="nav-icon">◉</span><span>Leads</span></button>
@@ -42,75 +51,102 @@
           <p id="view-subtitle">Track content, distribution, conversations and leads from one place.</p>
         </div>
         <div class="header-actions">
-          <span class="preview-badge">Preview mode</span>
+          <span class="preview-badge">Internal</span>
           <button id="refresh-all" class="secondary-btn">Refresh data</button>
         </div>
       </header>
 
       <section class="view active" id="view-overview">
         <div class="stats-grid" id="summary-cards"></div>
-
         <div class="dashboard-grid">
           <article class="card performance-card">
-            <div class="card-head">
-              <div>
-                <h2>Performance Overview</h2>
-                <p>Views, engagement and lead activity by platform.</p>
-              </div>
-              <span class="small-badge">Live data</span>
-            </div>
+            <div class="card-head"><div><h2>Performance Overview</h2><p>Views, publishing and lead activity by platform.</p></div><span class="small-badge">Live data</span></div>
             <div id="platform-bars" class="platform-bars"></div>
           </article>
-
           <article class="card">
-            <div class="card-head">
-              <div><h2>Pipeline</h2><p>Content attention turning into conversations.</p></div>
-            </div>
-            <div id="pipeline-boxes" class="pipeline-boxes"></div>
+            <div class="card-head"><div><h2>Media Pipeline</h2><p>From rendered clip to published content.</p></div></div>
+            <div id="media-pipeline" class="pipeline-boxes"></div>
           </article>
         </div>
 
         <article class="card">
           <div class="card-head">
-            <div><h2>Top Performing Content</h2><p>Best posts across all connected distribution accounts.</p></div>
-            <button class="text-btn" data-jump="content">View all content</button>
+            <div><h2>Recently Published</h2><p>Latest live URLs from the Distributor queue.</p></div>
+            <button class="text-btn" data-jump="content">View content</button>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Content</th><th>Platform</th><th>Account</th><th>Views</th><th>Engagement</th><th>Clicks</th><th>Leads</th></tr></thead>
-              <tbody id="top-posts"></tbody>
+              <thead><tr><th>Content</th><th>Platform</th><th>Account</th><th>Status</th><th>Views</th><th>Published URL</th></tr></thead>
+              <tbody id="recent-published"></tbody>
             </table>
           </div>
         </article>
 
         <div class="dashboard-grid">
           <article class="card">
-            <div class="card-head"><div><h2>Connected Channels</h2><p>Your current distributor accounts.</p></div><button class="text-btn" data-jump="accounts">Manage channels</button></div>
-            <div id="channel-preview" class="channel-preview"></div>
+            <div class="card-head"><div><h2>Recent Clips</h2><p>Latest outputs from the Clipper database.</p></div><button class="text-btn" data-jump="clipping">Open Clipping</button></div>
+            <div id="recent-clips" class="clip-mini-list"></div>
           </article>
-
           <article class="card">
             <div class="card-head"><div><h2>System Status</h2><p>What is live right now.</p></div></div>
             <div class="system-list">
               <div><span>Clipper database</span><strong class="ok">Connected</strong></div>
-              <div><span>Content analytics</span><strong id="analytics-status">Ready</strong></div>
-              <div><span>Instagram inbox</span><strong class="pending">Add OAuth keys</strong></div>
+              <div><span>Distributor queue</span><strong id="queue-status" class="ok">Connected</strong></div>
+              <div><span>Instagram inbox</span><strong class="pending">Add messaging OAuth</strong></div>
               <div><span>Email bridge</span><strong id="email-bridge" class="pending">Not configured</strong></div>
             </div>
           </article>
         </div>
       </section>
 
+      <section class="view" id="view-clipping">
+        <div class="section-top">
+          <div><h2>Clipping</h2><p>Review rendered clips, open the output, approve it, and see where it has been distributed.</p></div>
+          <div class="filters">
+            <select id="clip-status-filter">
+              <option value="all">All clips</option>
+              <option value="needs">Needs approval</option>
+              <option value="approved">Approved</option>
+              <option value="published">Published</option>
+            </select>
+          </div>
+        </div>
+        <div class="stats-grid compact" id="clip-summary"></div>
+        <article class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Clip</th><th>Campaign</th><th>Duration</th><th>Status</th><th>Video</th><th>Queue</th><th>Published</th><th>Action</th></tr></thead>
+              <tbody id="clips-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
       <section class="view" id="view-content">
         <div class="section-top">
-          <div><h2>Content Performance</h2><p>Track every distributed clip from post to lead.</p></div>
-          <div class="filters"><select id="content-platform-filter"><option value="all">All platforms</option><option value="instagram_reels">Instagram</option><option value="youtube_shorts">YouTube</option><option value="tiktok_video">TikTok</option></select></div>
+          <div><h2>Content & Distribution</h2><p>Every queued and published post, including the external result URL.</p></div>
+          <div class="filters">
+            <select id="content-status-filter">
+              <option value="all">All statuses</option>
+              <option value="done">Published</option>
+              <option value="ready">Ready</option>
+              <option value="running">Running</option>
+              <option value="failed">Failed</option>
+            </select>
+            <select id="content-platform-filter">
+              <option value="all">All platforms</option>
+              <option value="instagram_reels">Instagram</option>
+              <option value="youtube_shorts">YouTube</option>
+              <option value="tiktok_video">TikTok</option>
+              <option value="tiktok">TikTok legacy</option>
+            </select>
+          </div>
         </div>
         <div class="stats-grid compact" id="content-summary"></div>
         <article class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Post</th><th>Platform</th><th>Account</th><th>Views</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Clicks</th><th>Leads</th></tr></thead>
+              <thead><tr><th>Content</th><th>Platform</th><th>Account</th><th>Status</th><th>Views</th><th>Comments</th><th>Clip</th><th>Result URL</th><th>Error</th></tr></thead>
               <tbody id="content-table"></tbody>
             </table>
           </div>
@@ -118,41 +154,25 @@
       </section>
 
       <section class="view" id="view-inbox">
-        <div class="section-top">
-          <div><h2>Unified Inbox</h2><p>Instagram, Facebook, TikTok and email conversations will live here.</p></div>
-        </div>
+        <div class="section-top"><div><h2>Unified Inbox</h2><p>Instagram, Facebook, TikTok and email conversations will live here.</p></div></div>
         <div class="notice">
           <div class="notice-icon">🔒</div>
-          <div>
-            <strong>Inbox UI is ready. Live messages stay private until authentication is added.</strong>
-            <p>We removed the temporary admin-token login from the platform, but we are not exposing private DMs on a public URL. Once the real user login is added, this page will load the social conversation tables you just created.</p>
-          </div>
+          <div><strong>Inbox transport is prepared, but private messages are not exposed on this temporary-password build.</strong><p>Once we add the real Supabase user/login layer, the same UI will load the social conversation tables and manual reply outbox.</p></div>
         </div>
         <div class="inbox-preview">
-          <aside class="thread-preview">
-            <div class="inbox-search">Search conversations</div>
-            <div class="empty-list">No public conversation data shown in preview mode.</div>
-          </aside>
-          <div class="conversation-preview">
-            <div class="conversation-placeholder">
-              <div class="large-icon">✉</div>
-              <h3>Your unified social inbox</h3>
-              <p>Comments, DMs, replies and lead stages will appear here once account messaging permissions and user authentication are connected.</p>
-            </div>
-          </div>
+          <aside class="thread-preview"><div class="inbox-search">Search conversations</div><div class="empty-list">Messaging OAuth/authentication comes next.</div></aside>
+          <div class="conversation-preview"><div class="conversation-placeholder"><div class="large-icon">✉</div><h3>Your unified social inbox</h3><p>Comments, DMs, replies and lead stages will appear here once messaging permissions are active.</p></div></div>
         </div>
       </section>
 
       <section class="view" id="view-leads">
-        <div class="section-top">
-          <div><h2>Lead Pipeline</h2><p>Track content-generated leads from engagement to booked call.</p></div>
-        </div>
+        <div class="section-top"><div><h2>Lead Pipeline</h2><p>Track content-generated leads from engagement to booked call.</p></div></div>
         <div class="pipeline-board">
-          <div class="pipeline-column"><div class="pipeline-title"><span>New</span><b id="lead-new">0</b></div><div class="pipeline-empty">New social leads will appear here.</div></div>
+          <div class="pipeline-column"><div class="pipeline-title"><span>New</span><b id="lead-new">0</b></div><div class="pipeline-empty">New social leads.</div></div>
           <div class="pipeline-column"><div class="pipeline-title"><span>Engaged</span><b id="lead-engaged">0</b></div><div class="pipeline-empty">DM and comment conversations.</div></div>
           <div class="pipeline-column"><div class="pipeline-title"><span>Qualified</span><b id="lead-qualified">0</b></div><div class="pipeline-empty">Qualified prospects.</div></div>
           <div class="pipeline-column"><div class="pipeline-title"><span>Booked</span><b id="lead-booked">0</b></div><div class="pipeline-empty">Calls generated from content.</div></div>
-          <div class="pipeline-column"><div class="pipeline-title"><span>Client</span><b id="lead-client">0</b></div><div class="pipeline-empty">Closed clients and revenue attribution.</div></div>
+          <div class="pipeline-column"><div class="pipeline-title"><span>Client</span><b id="lead-client">0</b></div><div class="pipeline-empty">Clients and attributed revenue.</div></div>
         </div>
       </section>
 
@@ -161,29 +181,15 @@
           <div><h2>Connected Channels</h2><p>The same accounts already used by your Distributor.</p></div>
           <span id="account-count" class="small-badge"></span>
         </div>
-
         <div class="provider-grid">
-          <article class="provider-card">
-            <div class="provider-logo instagram">IG</div>
-            <div><strong>Instagram</strong><span id="ig-provider-status">OAuth keys not added yet</span></div>
-          </article>
-          <article class="provider-card">
-            <div class="provider-logo youtube">YT</div>
-            <div><strong>YouTube</strong><span id="yt-provider-status">OAuth keys not added yet</span></div>
-          </article>
-          <article class="provider-card">
-            <div class="provider-logo tiktok">TT</div>
-            <div><strong>TikTok</strong><span>Publishing connected</span></div>
-          </article>
+          <article class="provider-card"><div class="provider-logo instagram">IG</div><div><strong>Instagram</strong><span id="ig-provider-status">Publishing connected</span></div></article>
+          <article class="provider-card"><div class="provider-logo youtube">YT</div><div><strong>YouTube</strong><span id="yt-provider-status">Connector configured</span></div></article>
+          <article class="provider-card"><div class="provider-logo tiktok">TT</div><div><strong>TikTok</strong><span>Publishing connected</span></div></article>
         </div>
-
         <article class="card">
           <div class="card-head"><div><h2>All Channels</h2><p>Existing Distributor accounts and capabilities.</p></div></div>
           <div class="table-wrap">
-            <table>
-              <thead><tr><th>Account</th><th>Platform</th><th>Status</th><th>Publishing</th><th>Inbox</th><th>Webhook</th><th>Daily Limit</th></tr></thead>
-              <tbody id="accounts-table"></tbody>
-            </table>
+            <table><thead><tr><th>Account</th><th>Platform</th><th>Status</th><th>Publishing</th><th>Inbox</th><th>Webhook</th><th>Daily Limit</th></tr></thead><tbody id="accounts-table"></tbody></table>
           </div>
         </article>
       </section>
