@@ -293,24 +293,6 @@ async function load(){
   }
 }
 
-function unlock(){
-  $('temp-lock').hidden=true;
-  $('app-shell').hidden=false;
-  sessionStorage.setItem('alchemic_media_unlocked','1');
-  load();
-}
-
-$('temp-lock-form').addEventListener('submit',e=>{
-  e.preventDefault();
-  const value=$('temp-password').value;
-  if(value!==TEMP_PASSWORD){
-    $('temp-lock-error').textContent='Wrong password';
-    return;
-  }
-  $('temp-lock-error').textContent='';
-  unlock();
-});
-
 document.querySelectorAll('.nav-item').forEach(x=>x.addEventListener('click',()=>setView(x.dataset.view)));
 document.querySelectorAll('[data-jump]').forEach(x=>x.addEventListener('click',()=>setView(x.dataset.jump)));
 $('refresh-all').addEventListener('click',load);
@@ -337,4 +319,4 @@ $('sync-metrics').addEventListener('click',async()=>{
   }
 });
 
-if(sessionStorage.getItem('alchemic_media_unlocked')==='1') unlock();
+load();
