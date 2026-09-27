@@ -295,3 +295,79 @@ button{cursor:pointer}
   .provider-logo{width:34px;height:34px}
   .detail-grid{grid-template-columns:1fr}
 }
+
+
+/* Live Clipper control */
+.live-jobs-card{padding-bottom:14px}
+.job-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.job-card{border:1px solid var(--line);border-radius:11px;padding:13px;background:#fbfdff}
+.job-card.rendering{border-color:#fed7aa;background:#fffaf3}
+.job-card.waiting{border-color:#ddd6fe;background:#faf8ff}
+.job-card.failed{border-color:#fecaca;background:#fff8f8}
+.job-card.complete{border-color:#bbf7d0;background:#f8fffb}
+.job-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.job-title-wrap{display:flex;gap:9px;align-items:flex-start;min-width:0}
+.job-title-wrap strong,.job-title-wrap span{display:block}
+.job-title-wrap strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+.job-title-wrap span{font-size:8px;color:#94a3b8;margin-top:3px}
+.job-pulse{width:9px;height:9px;border-radius:50%;background:#2563eb;margin-top:3px;box-shadow:0 0 0 4px #dbeafe;flex:0 0 auto}
+.job-card.rendering .job-pulse{background:#f59e0b;box-shadow:0 0 0 4px #ffedd5;animation:jobPulse 1.4s ease-in-out infinite}
+.job-card.waiting .job-pulse{background:#8b5cf6;box-shadow:0 0 0 4px #ede9fe}
+.job-card.failed .job-pulse{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}
+.job-card.complete .job-pulse{background:#10b981;box-shadow:0 0 0 4px #d1fae5}
+@keyframes jobPulse{0%,100%{opacity:1}50%{opacity:.35}}
+.job-eta{text-align:right;flex:0 0 auto}.job-eta strong,.job-eta span{display:block}.job-eta strong{font-size:10px}.job-eta span{font-size:8px;color:#94a3b8;margin-top:3px}
+.job-progress-track{height:7px;border-radius:999px;background:#eaf0f6;overflow:hidden;margin-top:11px}
+.job-progress-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa);transition:width .45s ease}
+.job-card.rendering .job-progress-fill{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+.job-card.complete .job-progress-fill{background:linear-gradient(90deg,#10b981,#34d399)}
+.job-card.failed .job-progress-fill{background:#ef4444}
+.job-stage-row{display:flex;justify-content:space-between;gap:8px;margin-top:9px}.job-stage-row strong{font-size:9px}.job-stage-row span{font-size:8px;color:#94a3b8}
+.job-stage-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}.job-chip-live{background:#fff7ed;color:#c2410c}.job-chip-error{background:#fef2f2;color:#b91c1c}
+.job-error{font-size:8px;color:#b91c1c;background:#fff1f2;border-radius:6px;padding:6px 7px;margin-top:8px;line-height:1.4}
+.campaign-live-progress{margin:13px 0 4px;padding:10px;border-radius:9px;background:#f8fafc;border:1px solid #eef2f7}
+.campaign-live-head,.campaign-live-foot{display:flex;justify-content:space-between;gap:8px}.campaign-live-head{font-size:9px}.campaign-live-head span{color:#64748b}.campaign-live-head strong{color:#111827}.campaign-live-foot{font-size:8px;color:#94a3b8;margin-top:5px}
+.campaign-top{grid-template-columns:1fr auto auto}.campaign-top-actions{display:flex;gap:7px}.campaign-filters{justify-self:end}
+
+/* Campaign + preset forms */
+.form-modal-card,.preset-modal-card{position:relative;width:min(720px,calc(100% - 28px));max-height:92vh;overflow:auto;margin:4vh auto;background:#fff;border-radius:14px;box-shadow:0 30px 80px rgba(15,23,42,.24);padding:20px}
+.preset-modal-card{width:min(820px,calc(100% - 28px))}
+.form-modal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:17px}
+.form-modal-grid .span-2{grid-column:span 2}
+.form-modal-grid label{display:grid;gap:6px}.form-modal-grid label>span{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.form-modal-grid input,.form-modal-grid select,.form-modal-grid textarea{width:100%;border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:9px 10px;color:#374151;font-size:11px;resize:vertical}
+.form-modal-grid input:focus,.form-modal-grid select:focus,.form-modal-grid textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px #dbeafe}
+.rights-check{display:flex;align-items:flex-start;gap:8px;margin:14px 0 4px;font-size:10px;color:#475569}.rights-check input{margin-top:1px;accent-color:#2563eb}
+.form-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:13px}
+.connector-message.success{color:#047857}
+.preset-library{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:16px}
+.preset-card{border:1px solid var(--line);border-radius:10px;padding:11px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.preset-card-main{display:flex;gap:9px;min-width:0}.preset-icon{width:32px;height:32px;border-radius:8px;background:#eff6ff;color:#2563eb;display:grid;place-items:center;font-size:10px;font-weight:800;flex:0 0 auto}
+.preset-card-main strong,.preset-card-main span{display:block}.preset-card-main strong{font-size:10px}.preset-card-main span{font-size:8px;color:#94a3b8;margin-top:4px;line-height:1.4}
+.preset-card-meta{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.preset-create-box{border-top:1px solid var(--line);margin-top:18px;padding-top:16px}.preset-create-box h4{margin:0;font-size:12px}
+
+@media(max-width:900px){
+  .job-list{grid-template-columns:1fr}
+  .campaign-top{grid-template-columns:1fr}
+  .campaign-top-actions,.campaign-filters{justify-self:start}
+}
+
+@media(max-width:760px){
+  .job-card{padding:11px}
+  .job-title-wrap strong{max-width:190px}
+  .campaign-top-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .campaign-top-actions button{width:100%}
+  .form-modal-card,.preset-modal-card{width:100%;height:100%;max-height:none;margin:0;border-radius:0;padding:14px}
+  .form-modal-grid{grid-template-columns:1fr;gap:9px}
+  .form-modal-grid .span-2{grid-column:auto}
+  .preset-library{grid-template-columns:1fr}
+  .preset-card{display:grid}
+  .preset-card-meta{justify-content:flex-start}
+}
+
+@media(max-width:420px){
+  .job-card-head{display:grid}
+  .job-eta{text-align:left}
+  .job-stage-row{display:grid}
+}
