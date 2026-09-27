@@ -1,7 +1,6 @@
--- ALCHEMIC SOCIAL HUB — ALL-IN-ONE CURRENT MIGRATION
+-- ALCHEMIC MEDIA / SOCIAL HUB — ALL-IN-ONE CURRENT MIGRATION
 -- Compatible with the current Clipper / Distributor database.
 -- Safe to re-run.
--- Generated from 000_BOOTSTRAP_FIRST.sql + corrected 002_SOCIAL_HUB_CORE.sql.
 -- Do NOT run this on the email Outreach database.
 
 -- Alchemic Social Hub - SAFE BOOTSTRAP
@@ -83,6 +82,58 @@ create table if not exists public.post_metrics_snapshots (
 
 create index if not exists post_metrics_snapshots_history_captured_idx
   on public.post_metrics_snapshots(history_id, captured_at desc);
+
+-- ------------------------------------------------------------
+-- 1B. Manual publishing approval gate
+-- Existing assets remain approved. New assets require approval in Alchemic Media.
+-- Queue rows are held by schedule, without depending on queue status values.
+-- ------------------------------------------------------------
+alter table public.content_assets
+  add column if not exists media_publish_approved boolean not null default false,
+  add column if not exists media_approved_at timestamptz;
+
+alter table public.content_publish_queue
+  add column if not exists media_approval_hold boolean not null default false,
+  add column if not exists media_original_scheduled_at timestamptz;
+
+-- Preserve all clips that existed before this feature was installed.
+update public.content_assets
+set media_publish_approved = true,
+    media_approved_at = coalesce(media_approved_at, updated_at, created_at)
+where media_approved_at is null;
+
+create or replace function public.alchemic_hold_unapproved_publish()
+returns trigger
+language plpgsql
+set search_path = public
+as $
+declare
+  v_approved boolean;
+begin
+  select coalesce(a.media_publish_approved, false)
+    into v_approved
+  from public.content_assets a
+  where a.id = new.asset_id;
+
+  if coalesce(v_approved, false) = false then
+    if coalesce(new.media_approval_hold, false) = false then
+      new.media_original_scheduled_at := new.scheduled_at;
+    end if;
+    new.media_approval_hold := true;
+    new.scheduled_at := '2999-01-01 00:00:00+00'::timestamptz;
+  end if;
+
+  return new;
+end;
+$;
+
+drop trigger if exists trg_alchemic_hold_unapproved_publish
+  on public.content_publish_queue;
+
+create trigger trg_alchemic_hold_unapproved_publish
+before insert on public.content_publish_queue
+for each row
+execute function public.alchemic_hold_unapproved_publish();
 
 -- ------------------------------------------------------------
 -- 2. Social contacts
