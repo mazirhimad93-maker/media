@@ -90,3 +90,32 @@ button{cursor:pointer}
 .hook-text{color:#6b7280;font-size:9px;margin-top:4px;max-width:340px;white-space:normal;line-height:1.4}
 .url-stack{display:flex;flex-direction:column;gap:4px}
 .url-stack a{font-size:9px}
+
+
+/* Campaigns, filters, bulk actions, preview modal */
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.filter-input{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:8px 10px;color:#374151;font-size:11px;min-width:180px}
+.filter-input:focus,.filters select:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px #dbeafe}
+.bulk-bar{background:#eff6ff;border:1px solid #bfdbfe;border-radius:11px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+.bulk-bar[hidden]{display:none}
+.bulk-bar strong,.bulk-bar span{display:block}.bulk-bar strong{font-size:12px;color:#1d4ed8}.bulk-bar span{font-size:10px;color:#64748b;margin-top:2px}
+.bulk-actions{display:flex;gap:7px}.primary-inline-btn{border:1px solid #1d4ed8;background:#2563eb;color:#fff;border-radius:8px;padding:9px 12px;font-size:11px;font-weight:700}.primary-inline-btn:hover{background:#1d4ed8}
+.row-check{width:15px;height:15px;accent-color:#2563eb}
+.metric-stack{display:grid;gap:2px}.metric-stack strong{font-size:11px}.metric-stack span{font-size:8px;color:#94a3b8}
+.distribution-list{display:grid;gap:4px;min-width:150px}.distribution-line{display:flex;gap:5px;align-items:center;font-size:8px;color:#64748b}.distribution-line b{font-size:8px;color:#334155}.tiny-dot{width:5px;height:5px;border-radius:50%;background:#94a3b8}.tiny-dot.done{background:#10b981}.tiny-dot.failed{background:#ef4444}.tiny-dot.ready{background:#2563eb}.tiny-dot.running{background:#f59e0b}
+.url-dropdown{position:relative}.url-dropdown summary{cursor:pointer;color:#2563eb;font-size:9px;font-weight:700;list-style:none}.url-dropdown summary::-webkit-details-marker{display:none}.url-menu{position:absolute;z-index:40;right:0;top:22px;min-width:230px;background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px rgba(15,23,42,.14);padding:7px;display:grid;gap:4px}.url-menu a{padding:7px 8px;border-radius:6px;text-decoration:none;color:#334155;font-size:9px}.url-menu a:hover{background:#f8fafc;color:#2563eb}
+.details-btn{border:0;background:transparent;color:#2563eb;font-size:9px;font-weight:700;padding:5px 0}
+.campaign-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.campaign-card{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:17px}
+.campaign-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.campaign-card-head h3{margin:0;font-size:14px}.campaign-card-head p{margin:5px 0 0;color:var(--muted);font-size:10px;line-height:1.5}
+.campaign-status{padding:4px 7px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:8px;font-weight:700;text-transform:uppercase}
+.campaign-status:not(.active){background:#f3f4f6;color:#6b7280}
+.campaign-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:14px 0}.campaign-kpi{border:1px solid #eef2f7;background:#fbfdff;border-radius:8px;padding:9px}.campaign-kpi strong{display:block;font-size:14px}.campaign-kpi span{display:block;font-size:8px;color:#94a3b8;margin-top:2px}
+.campaign-meta{display:grid;gap:8px;margin:12px 0}.campaign-meta-row{display:flex;justify-content:space-between;gap:12px;font-size:9px;color:#64748b}.campaign-meta-row strong{color:#334155;text-align:right}
+.campaign-platforms,.campaign-channels{display:flex;gap:4px;flex-wrap:wrap}.mini-chip{background:#f1f5f9;color:#475569;border-radius:999px;padding:4px 6px;font-size:8px}
+.campaign-actions{display:flex;gap:7px;border-top:1px solid #f1f5f9;padding-top:12px;margin-top:12px}.campaign-actions button{flex:1}
+.modal-shell,.drawer-shell{position:fixed;inset:0;z-index:1100}.modal-shell[hidden],.drawer-shell[hidden]{display:none}.modal-backdrop,.drawer-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px)}
+.video-modal-card{position:relative;width:min(820px,calc(100% - 32px));max-height:90vh;overflow:auto;margin:5vh auto;background:#fff;border-radius:14px;box-shadow:0 30px 80px rgba(15,23,42,.28);padding:16px}
+.modal-head,.drawer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:15px}.modal-head h3,.drawer-head h3{margin:0;font-size:16px}.modal-head p{margin:4px 0 0;color:var(--muted);font-size:10px}.modal-close{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:32px;font-size:19px;line-height:1}.video-modal-card video{display:block;width:100%;max-height:62vh;background:#000;border-radius:10px;margin-top:14px}.modal-meta{padding-top:12px;display:grid;gap:8px}.meta-row{display:flex;justify-content:space-between;gap:15px;border-bottom:1px solid #f1f5f9;padding:7px 0;font-size:10px}.meta-row span{color:var(--muted)}.meta-row strong{text-align:right}
+.detail-drawer{position:absolute;right:0;top:0;bottom:0;width:min(520px,94vw);background:#fff;box-shadow:-20px 0 60px rgba(15,23,42,.18);padding:20px;overflow:auto}.drawer-head{position:sticky;top:-20px;background:#fff;padding:20px 0 12px;z-index:2;border-bottom:1px solid #f1f5f9}.eyebrow-small{font-size:8px;letter-spacing:.12em;color:#2563eb;font-weight:800}.drawer-body{padding-top:16px;display:grid;gap:14px}.detail-section{border:1px solid var(--line);border-radius:10px;padding:12px}.detail-section h4{margin:0 0 9px;font-size:11px}.detail-section p{margin:0;color:#64748b;font-size:10px;line-height:1.55}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.detail-stat{background:#f8fafc;border-radius:8px;padding:9px}.detail-stat strong{display:block;font-size:13px}.detail-stat span{font-size:8px;color:#94a3b8}.distribution-card{padding:8px 0;border-bottom:1px solid #f1f5f9}.distribution-card:last-child{border-bottom:0}.distribution-card-top{display:flex;justify-content:space-between;gap:10px;font-size:9px}.distribution-card small{display:block;color:#94a3b8;margin-top:3px}
+@media(max-width:1000px){.campaign-grid{grid-template-columns:1fr}.campaign-kpis{grid-template-columns:repeat(2,1fr)}}
