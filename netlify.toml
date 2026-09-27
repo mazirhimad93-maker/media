@@ -21,6 +21,18 @@
   to = "/.netlify/functions/dashboard"
   status = 200
 [[redirects]]
+  from = "/api/clips"
+  to = "/.netlify/functions/clips"
+  status = 200
+[[redirects]]
+  from = "/api/clips/action"
+  to = "/.netlify/functions/clip-action"
+  status = 200
+[[redirects]]
+  from = "/api/content"
+  to = "/.netlify/functions/content-data"
+  status = 200
+[[redirects]]
   from = "/api/inbox"
   to = "/.netlify/functions/inbox"
   status = 200
