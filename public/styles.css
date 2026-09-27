@@ -52,3 +52,41 @@ button{cursor:pointer}
 .empty-row{color:#9ca3af;text-align:center;padding:28px!important}
 @media(max-width:1180px){.stats-grid{grid-template-columns:repeat(3,1fr)}.dashboard-grid{grid-template-columns:1fr}.provider-grid{grid-template-columns:1fr 1fr}.platform-row{grid-template-columns:100px 1fr 64px}}
 @media(max-width:800px){.app-shell{grid-template-columns:1fr}.sidebar{height:auto;position:static}.nav-list{display:flex;overflow:auto;padding:12px 0}.nav-item{min-width:max-content}.sidebar-bottom{display:none}.workspace{padding:18px}.stats-grid{grid-template-columns:1fr 1fr}.page-header{display:block}.header-actions{margin-top:13px}.inbox-preview{grid-template-columns:1fr}.thread-preview{border-right:0;border-bottom:1px solid var(--line)}.provider-grid{grid-template-columns:1fr}.pipeline-board{grid-template-columns:repeat(5,220px)}}
+
+/* Temporary password gate */
+.temp-lock{position:fixed;inset:0;z-index:1000;background:#f8fafc;display:grid;place-items:center;padding:20px}
+.temp-lock-card{width:min(390px,100%);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.12);padding:28px}
+.temp-lock-card h1{margin:18px 0 4px;font-size:24px;letter-spacing:-.03em}
+.temp-lock-card p{margin:0 0 18px;color:var(--muted);font-size:12px}
+.temp-lock-card input{width:100%;border:1px solid #d1d5db;border-radius:9px;padding:11px 12px;margin-bottom:10px;outline:none}
+.temp-lock-card input:focus{border-color:#2563eb;box-shadow:0 0 0 3px #dbeafe}
+.primary-btn{width:100%;border:0;background:#2563eb;color:#fff;border-radius:9px;padding:11px 14px;font-weight:700}
+.lock-logo{width:44px;height:44px}
+.lock-error{display:block;color:#dc2626;font-size:11px;margin-top:10px;min-height:14px}
+
+/* Clipping */
+.clip-mini-list{display:grid;gap:9px}
+.clip-mini{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.clip-mini-main{min-width:0}
+.clip-mini strong,.clip-mini span{display:block}
+.clip-mini strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:430px}
+.clip-mini span{font-size:9px;color:var(--muted);margin-top:3px}
+.clip-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.action-btn,.open-btn{border-radius:7px;padding:6px 9px;font-size:9px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+.action-btn{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}
+.action-btn:hover{background:#dbeafe}
+.action-btn:disabled{opacity:.5;cursor:wait}
+.open-btn{border:1px solid #d1d5db;background:#fff;color:#374151}
+.open-btn:hover{background:#f9fafb}
+.post-url{color:#2563eb;text-decoration:none;font-weight:600}
+.post-url:hover{text-decoration:underline}
+.status-approved{background:#ecfdf5;color:#047857}
+.status-ready{background:#eff6ff;color:#1d4ed8}
+.status-running{background:#fff7ed;color:#c2410c}
+.status-failed{background:#fef2f2;color:#b91c1c}
+.status-other{background:#f3f4f6;color:#4b5563}
+.queue-pills{display:flex;gap:4px;flex-wrap:wrap}
+.queue-pill{font-size:8px;padding:3px 5px;border-radius:999px;background:#f3f4f6;color:#4b5563}
+.hook-text{color:#6b7280;font-size:9px;margin-top:4px;max-width:340px;white-space:normal;line-height:1.4}
+.url-stack{display:flex;flex-direction:column;gap:4px}
+.url-stack a{font-size:9px}
