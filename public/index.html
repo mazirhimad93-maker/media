@@ -117,6 +117,18 @@
           </div>
         </div>
         <div class="stats-grid compact" id="clip-summary"></div>
+
+        <article class="card live-jobs-card">
+          <div class="card-head">
+            <div>
+              <h2>Active Clipper Jobs</h2>
+              <p>Live progress from the Clipper job-control tables. Auto-refreshes every 10 seconds.</p>
+            </div>
+            <span id="jobs-last-refresh" class="small-badge">Connecting…</span>
+          </div>
+          <div id="clipper-jobs-list" class="job-list"></div>
+        </article>
+
         <div id="bulk-bar" class="bulk-bar" hidden>
           <div><strong id="bulk-count">0 selected</strong><span>Approve selected clips for publishing.</span></div>
           <div class="bulk-actions"><button id="clear-selection" class="secondary-btn">Clear</button><button id="bulk-approve" class="primary-inline-btn">Approve selected</button></div>
@@ -133,9 +145,13 @@
 
 
       <section class="view" id="view-campaigns">
-        <div class="section-top">
-          <div><h2>Campaigns</h2><p>See each campaign from rendered clips through distribution and published results.</p></div>
-          <div class="filters">
+        <div class="section-top campaign-top">
+          <div><h2>Campaigns</h2><p>Create clipping jobs, choose presets, and follow each campaign through rendering and distribution.</p></div>
+          <div class="campaign-top-actions">
+            <button id="open-presets" class="secondary-btn">Presets</button>
+            <button id="open-create-campaign" class="primary-inline-btn">+ Create Campaign</button>
+          </div>
+          <div class="filters campaign-filters">
             <input id="campaign-search" class="filter-input" type="search" placeholder="Search campaigns">
             <select id="campaign-status-filter">
               <option value="all">All statuses</option>
@@ -286,6 +302,79 @@
         </article>
       </section>
     </main>
+  </div>
+
+  <div id="create-campaign-modal" class="modal-shell" hidden>
+    <div class="modal-backdrop" data-close-create-campaign></div>
+    <form id="create-campaign-form" class="form-modal-card">
+      <div class="modal-head">
+        <div><span class="eyebrow-small">CLIPPER INTAKE</span><h3>Create Campaign</h3><p>Submit a source directly into the existing Clipper workflow.</p></div>
+        <button type="button" class="modal-close" data-close-create-campaign>×</button>
+      </div>
+
+      <div class="form-modal-grid">
+        <label class="span-2"><span>Campaign name</span><input id="new-campaign-name" required placeholder="Podcast launch clips"></label>
+        <label class="span-2"><span>Source URL</span><input id="new-source-url" required type="url" placeholder="YouTube, Drive, Instagram, TikTok or direct MP4 URL"></label>
+        <label class="span-2"><span>Source title</span><input id="new-source-title" placeholder="Episode / video title"></label>
+
+        <label><span>Preset</span><select id="new-preset" required></select></label>
+        <label><span>Clips</span><select id="new-clip-count"><option value="1">1 clip</option><option value="2">2 clips</option><option value="3" selected>3 clips</option></select></label>
+
+        <label><span>Mode</span>
+          <select id="new-operation-mode">
+            <option value="long_form_clip" selected>Long-form → clips</option>
+            <option value="variation_factory">Whole-video variations</option>
+            <option value="publish_as_is">Publish as-is</option>
+          </select>
+        </label>
+
+        <label><span>Moment selection</span>
+          <select id="new-selector-mode">
+            <option value="ollama_ranked" selected>Automatic viral selection</option>
+            <option value="chatgpt_external">Pause for ChatGPT selection</option>
+            <option value="full_source_locked">Use full source</option>
+          </select>
+        </label>
+
+        <label class="span-2"><span>Editing instructions</span><textarea id="new-editing-prompt" rows="3" placeholder="Optional instructions for this source"></textarea></label>
+        <label class="span-2"><span>CTA text</span><input id="new-cta-text" placeholder="Optional exact CTA text"></label>
+        <label class="span-2"><span>Campaign brief</span><textarea id="new-campaign-brief" rows="2" placeholder="Optional internal notes"></textarea></label>
+      </div>
+
+      <label class="rights-check"><input id="new-rights-confirmed" type="checkbox" required><span>I confirm we own or are authorized to repurpose this source.</span></label>
+
+      <div id="create-campaign-message" class="connector-message"></div>
+      <div class="form-modal-actions">
+        <button type="button" class="secondary-btn" data-close-create-campaign>Cancel</button>
+        <button id="submit-campaign" type="submit" class="primary-inline-btn">Create & Queue</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="presets-modal" class="modal-shell" hidden>
+    <div class="modal-backdrop" data-close-presets></div>
+    <div class="preset-modal-card">
+      <div class="modal-head">
+        <div><span class="eyebrow-small">CLIPPER PRESETS</span><h3>Preset Library</h3><p>Use existing renderer presets or create a new version.</p></div>
+        <button type="button" class="modal-close" data-close-presets>×</button>
+      </div>
+
+      <div id="preset-library" class="preset-library"></div>
+
+      <form id="create-preset-form" class="preset-create-box">
+        <h4>Add Preset</h4>
+        <div class="form-modal-grid">
+          <label><span>Name</span><input id="preset-name" required placeholder="My preset"></label>
+          <label><span>Slug</span><input id="preset-slug" placeholder="my-preset"></label>
+          <label class="span-2"><span>Description</span><input id="preset-description" placeholder="What this preset is for"></label>
+          <label><span>Start from</span><select id="preset-base"></select></label>
+          <label><span>Preview URL</span><input id="preset-preview-url" type="url" placeholder="Optional preview video"></label>
+          <label class="span-2"><span>Advanced preset JSON</span><textarea id="preset-json" rows="5" placeholder="Optional. Leave blank to clone the selected base preset."></textarea></label>
+        </div>
+        <div id="preset-message" class="connector-message"></div>
+        <div class="form-modal-actions"><button id="save-preset" class="primary-inline-btn" type="submit">Save Preset</button></div>
+      </form>
+    </div>
   </div>
 
   <div id="video-modal" class="modal-shell" hidden>
