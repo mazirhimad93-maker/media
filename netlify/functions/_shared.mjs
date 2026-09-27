@@ -235,8 +235,33 @@ export const assignmentFromState = (state) => ({
 
 export function successPage({ title, message, accounts = [] }) {
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-  const list = accounts.map((x) => `<li><strong>${esc(x.username || x.display_name || x.platform_account_id)}</strong> — ${esc(x.platform || '')}</li>`).join('');
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{background:#08090b;color:#f6f7f9;font-family:system-ui;margin:0;display:grid;place-items:center;min-height:100vh}.card{max-width:620px;background:#15181e;border:1px solid #2a2f38;border-radius:18px;padding:28px}.ok{color:#bdff32}a{color:#bdff32}li{margin:8px 0}</style></head><body><div class="card"><div class="ok">ALCHEMIC SOCIAL HUB</div><h1>${esc(title)}</h1><p>${esc(message)}</p>${list ? `<ul>${list}</ul>` : ''}<p><a href="/">Return to Social Hub</a></p></div></body></html>`;
+  const list = accounts.map((x) => `<li><strong>${esc(x.username || x.display_name || x.platform_account_id)}</strong><span>${esc(x.platform || '')}</span></li>`).join('');
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>${esc(title)}</title>
+      <style>
+        *{box-sizing:border-box}body{margin:0;background:#f8fafc;color:#111827;font-family:Inter,system-ui,-apple-system,sans-serif;min-height:100vh;display:grid;place-items:center;padding:18px}
+        .card{width:min(520px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px;box-shadow:0 16px 50px rgba(15,23,42,.08)}
+        .logo{width:42px;height:42px;border-radius:11px;background:#2563eb;color:#fff;display:grid;place-items:center;font-weight:800;margin-bottom:18px}
+        .eyebrow{font-size:10px;font-weight:800;letter-spacing:.08em;color:#2563eb}.card h1{font-size:22px;margin:7px 0 8px}.card p{font-size:12px;line-height:1.55;color:#64748b}
+        ul{list-style:none;padding:0;margin:16px 0;display:grid;gap:7px}li{border:1px solid #e5e7eb;border-radius:9px;padding:10px 11px;display:flex;justify-content:space-between;gap:10px;font-size:11px}li span{color:#64748b}
+        a{display:block;background:#2563eb;color:#fff;text-decoration:none;text-align:center;border-radius:9px;padding:11px 14px;font-size:12px;font-weight:700;margin-top:18px}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">A</div>
+        <div class="eyebrow">ALCHEMIC MEDIA</div>
+        <h1>${esc(title)}</h1>
+        <p>${esc(message)}</p>
+        ${list ? `<ul>${list}</ul>` : ''}
+        <a href="/?view=accounts">Return to Channels</a>
+      </div>
+    </body>
+  </html>`;
 }
 
 export const hashIp = (ip) => crypto.createHash('sha256').update(`${process.env.CLICK_HASH_SALT || 'alchemic'}:${ip || ''}`).digest('hex');
