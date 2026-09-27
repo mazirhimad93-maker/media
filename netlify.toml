@@ -21,6 +21,10 @@
   to = "/.netlify/functions/dashboard"
   status = 200
 [[redirects]]
+  from = "/api/campaigns"
+  to = "/.netlify/functions/campaigns"
+  status = 200
+[[redirects]]
   from = "/api/clips"
   to = "/.netlify/functions/clips"
   status = 200
