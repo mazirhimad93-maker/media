@@ -213,9 +213,66 @@
 
       <section class="view" id="view-accounts">
         <div class="section-top">
-          <div><h2>Connected Channels</h2><p>The same accounts already used by your Distributor.</p></div>
+          <div><h2>Connected Channels</h2><p>Add new social channels and manage the same accounts used by your Distributor.</p></div>
           <span id="account-count" class="small-badge"></span>
         </div>
+
+        <article class="card connector-card">
+          <div class="card-head">
+            <div>
+              <h2>Add Channel</h2>
+              <p>Connect a channel once, then reuse it across campaigns, publishing and performance tracking.</p>
+            </div>
+          </div>
+
+          <div class="connector-layout">
+            <div class="connector-form">
+              <label>
+                <span>Campaign</span>
+                <select id="connector-campaign"><option value="">No campaign assignment</option></select>
+              </label>
+              <label>
+                <span>Distribution pool</span>
+                <select id="connector-pool"><option value="">No pool assignment</option></select>
+              </label>
+              <label>
+                <span>Daily limit</span>
+                <input id="connector-daily" type="number" min="0" max="1000" value="4">
+              </label>
+              <label>
+                <span>Weekly limit</span>
+                <input id="connector-weekly" type="number" min="0" max="7000" value="28">
+              </label>
+              <label>
+                <span>Minimum gap</span>
+                <select id="connector-gap">
+                  <option value="30">30 min</option>
+                  <option value="60" selected>1 hour</option>
+                  <option value="120">2 hours</option>
+                  <option value="240">4 hours</option>
+                  <option value="720">12 hours</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="connector-actions">
+              <button id="connect-instagram" class="connector-btn instagram-connect">
+                <span class="provider-logo instagram">IG</span>
+                <span><strong>Add Instagram</strong><small id="connect-instagram-status">Professional account</small></span>
+              </button>
+              <button id="connect-youtube" class="connector-btn youtube-connect">
+                <span class="provider-logo youtube">YT</span>
+                <span><strong>Add YouTube</strong><small id="connect-youtube-status">Channel OAuth</small></span>
+              </button>
+              <div class="connector-btn disabled-connector">
+                <span class="provider-logo tiktok">TT</span>
+                <span><strong>Add TikTok</strong><small>Existing TikTok publishing accounts are supported. OAuth connector is next.</small></span>
+              </div>
+            </div>
+          </div>
+          <div id="connector-message" class="connector-message"></div>
+        </article>
+
         <div class="provider-grid">
           <article class="provider-card"><div class="provider-logo instagram">IG</div><div><strong>Instagram</strong><span id="ig-provider-status">Publishing connected</span></div></article>
           <article class="provider-card"><div class="provider-logo youtube">YT</div><div><strong>YouTube</strong><span id="yt-provider-status">Connector configured</span></div></article>
