@@ -4,77 +4,192 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Alchemic Social Hub</title>
+  <title>Alchemic Media</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <section id="unlock" class="unlock-screen">
-    <div class="unlock-card">
-      <div class="brand-mark">A</div>
-      <p class="eyebrow">ALCHEMIC GROWTH OS</p>
-      <h1>Social Hub</h1>
-      <p class="muted">Content performance, social inbox, connected channels, and a read-only view of email replies.</p>
-      <form id="unlock-form"><input id="admin-token" type="password" placeholder="Internal access token" autocomplete="off" required><button>Open Social Hub</button></form>
-      <p class="error" id="unlock-error" hidden></p>
-    </div>
-  </section>
-
-  <div id="app" class="app" hidden>
+  <div class="app-shell">
     <aside class="sidebar">
-      <div class="logo-row"><div class="brand-mark small-mark">A</div><div><strong>Alchemic</strong><span>Social Hub</span></div></div>
-      <nav>
-        <button class="nav active" data-view="overview">Overview</button>
-        <button class="nav" data-view="inbox">Unified Inbox <span id="unread-pill" class="pill">0</span></button>
-        <button class="nav" data-view="content">Content Performance</button>
-        <button class="nav" data-view="accounts">Connected Accounts</button>
+      <div class="brand">
+        <div class="brand-icon">A</div>
+        <div>
+          <strong>Alchemic Media</strong>
+          <span>Growth OS</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">▦</span><span>Dashboard</span></button>
+        <button class="nav-item" data-view="content"><span class="nav-icon">▶</span><span>Content</span></button>
+        <button class="nav-item" data-view="inbox"><span class="nav-icon">✉</span><span>Inbox</span><span id="unread-pill" class="nav-badge">0</span></button>
+        <button class="nav-item" data-view="leads"><span class="nav-icon">◉</span><span>Leads</span></button>
+        <button class="nav-item" data-view="accounts"><span class="nav-icon">◎</span><span>Channels</span></button>
       </nav>
-      <div class="sidebar-foot"><span id="system-state" class="dot"></span><span id="system-label">Connected</span><button id="refresh-all" class="link-btn">Refresh</button></div>
+
+      <div class="sidebar-bottom">
+        <div class="workspace-card">
+          <div class="workspace-avatar">AM</div>
+          <div><strong>Alchemic</strong><span>Media workspace</span></div>
+        </div>
+        <div class="status-row"><span class="status-dot"></span><span>Content DB connected</span></div>
+      </div>
     </aside>
 
-    <main class="main">
-      <header class="topbar"><div><p class="eyebrow">ACQUISITION COMMAND CENTER</p><h1 id="view-title">Overview</h1></div><div class="top-actions"><span class="badge" id="email-bridge">Email bridge…</span><button id="sync-metrics" class="ghost">Sync metrics</button></div></header>
+    <main class="workspace">
+      <header class="page-header">
+        <div>
+          <h1 id="view-title">Media Dashboard</h1>
+          <p id="view-subtitle">Track content, distribution, conversations and leads from one place.</p>
+        </div>
+        <div class="header-actions">
+          <span class="preview-badge">Preview mode</span>
+          <button id="refresh-all" class="secondary-btn">Refresh data</button>
+        </div>
+      </header>
 
       <section class="view active" id="view-overview">
-        <div class="metrics" id="summary-cards"></div>
-        <div class="grid-2">
-          <article class="panel"><div class="panel-head"><div><h2>Channel performance</h2><p>Published content → views → conversations → leads.</p></div></div><div class="table-wrap"><table><thead><tr><th>Platform</th><th>Posts</th><th>Views</th><th>Comments</th><th>Clicks</th><th>Conversations</th><th>Leads</th></tr></thead><tbody id="platform-table"></tbody></table></div></article>
-          <article class="panel"><div class="panel-head"><div><h2>Recent activity</h2><p>Newest social and email replies.</p></div></div><div class="activity" id="recent-activity"></div></article>
-        </div>
-        <article class="panel"><div class="panel-head"><div><h2>Top content</h2><p>Uses your existing <code>content_history</code> + <code>post_metrics_snapshots</code> lineage.</p></div></div><div class="table-wrap"><table><thead><tr><th>Post</th><th>Platform</th><th>Account</th><th>Views</th><th>Engagement</th><th>Clicks</th><th>Leads</th></tr></thead><tbody id="top-posts"></tbody></table></div></article>
-      </section>
+        <div class="stats-grid" id="summary-cards"></div>
 
-      <section class="view" id="view-inbox">
-        <div class="inbox-layout">
-          <aside class="threads panel">
-            <div class="inbox-tools"><div class="segmented"><button class="seg active" data-inbox="all">All</button><button class="seg" data-inbox="social">Social</button><button class="seg" data-inbox="email">Email</button></div><button id="reload-inbox" class="icon-btn">↻</button></div>
-            <div id="thread-list" class="thread-list"></div>
-          </aside>
-          <article class="conversation panel">
-            <div id="conversation-empty" class="empty"><h2>Select a conversation</h2><p>Social replies can be answered here. Email replies are displayed read-only so the existing Outreach Engine stays untouched.</p></div>
-            <div id="conversation-wrap" hidden>
-              <div class="conversation-head"><div><h2 id="conversation-name"></h2><p id="conversation-meta"></p></div><select id="lead-status-select" class="status-select"><option value="new">New</option><option value="engaged">Engaged</option><option value="qualified">Qualified</option><option value="registered">Registered</option><option value="booked">Booked</option><option value="client">Client</option><option value="not_fit">Not fit</option><option value="archived">Archived</option></select></div>
-              <div id="messages" class="messages"></div>
-              <form id="reply-form" class="composer"><textarea id="reply-body" rows="3" placeholder="Write a manual reply…"></textarea><div><span class="small-text">No AI. Reply is queued to n8n.</span><button type="submit">Queue reply</button></div></form>
+        <div class="dashboard-grid">
+          <article class="card performance-card">
+            <div class="card-head">
+              <div>
+                <h2>Performance Overview</h2>
+                <p>Views, engagement and lead activity by platform.</p>
+              </div>
+              <span class="small-badge">Live data</span>
+            </div>
+            <div id="platform-bars" class="platform-bars"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <div><h2>Pipeline</h2><p>Content attention turning into conversations.</p></div>
+            </div>
+            <div id="pipeline-boxes" class="pipeline-boxes"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Top Performing Content</h2><p>Best posts across all connected distribution accounts.</p></div>
+            <button class="text-btn" data-jump="content">View all content</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Content</th><th>Platform</th><th>Account</th><th>Views</th><th>Engagement</th><th>Clicks</th><th>Leads</th></tr></thead>
+              <tbody id="top-posts"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div class="dashboard-grid">
+          <article class="card">
+            <div class="card-head"><div><h2>Connected Channels</h2><p>Your current distributor accounts.</p></div><button class="text-btn" data-jump="accounts">Manage channels</button></div>
+            <div id="channel-preview" class="channel-preview"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head"><div><h2>System Status</h2><p>What is live right now.</p></div></div>
+            <div class="system-list">
+              <div><span>Clipper database</span><strong class="ok">Connected</strong></div>
+              <div><span>Content analytics</span><strong id="analytics-status">Ready</strong></div>
+              <div><span>Instagram inbox</span><strong class="pending">Add OAuth keys</strong></div>
+              <div><span>Email bridge</span><strong id="email-bridge" class="pending">Not configured</strong></div>
             </div>
           </article>
         </div>
       </section>
 
       <section class="view" id="view-content">
-        <div class="metrics" id="content-summary"></div>
-        <article class="panel"><div class="panel-head"><div><h2>Clip & post performance</h2><p>Sorts your published distributor output by views while keeping clip lineage.</p></div></div><div class="table-wrap"><table><thead><tr><th>Post</th><th>Clip</th><th>Platform</th><th>Views</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th><th>Clicks</th><th>Leads</th></tr></thead><tbody id="content-table"></tbody></table></div></article>
+        <div class="section-top">
+          <div><h2>Content Performance</h2><p>Track every distributed clip from post to lead.</p></div>
+          <div class="filters"><select id="content-platform-filter"><option value="all">All platforms</option><option value="instagram_reels">Instagram</option><option value="youtube_shorts">YouTube</option><option value="tiktok_video">TikTok</option></select></div>
+        </div>
+        <div class="stats-grid compact" id="content-summary"></div>
+        <article class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Post</th><th>Platform</th><th>Account</th><th>Views</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Clicks</th><th>Leads</th></tr></thead>
+              <tbody id="content-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-inbox">
+        <div class="section-top">
+          <div><h2>Unified Inbox</h2><p>Instagram, Facebook, TikTok and email conversations will live here.</p></div>
+        </div>
+        <div class="notice">
+          <div class="notice-icon">🔒</div>
+          <div>
+            <strong>Inbox UI is ready. Live messages stay private until authentication is added.</strong>
+            <p>We removed the temporary admin-token login from the platform, but we are not exposing private DMs on a public URL. Once the real user login is added, this page will load the social conversation tables you just created.</p>
+          </div>
+        </div>
+        <div class="inbox-preview">
+          <aside class="thread-preview">
+            <div class="inbox-search">Search conversations</div>
+            <div class="empty-list">No public conversation data shown in preview mode.</div>
+          </aside>
+          <div class="conversation-preview">
+            <div class="conversation-placeholder">
+              <div class="large-icon">✉</div>
+              <h3>Your unified social inbox</h3>
+              <p>Comments, DMs, replies and lead stages will appear here once account messaging permissions and user authentication are connected.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-leads">
+        <div class="section-top">
+          <div><h2>Lead Pipeline</h2><p>Track content-generated leads from engagement to booked call.</p></div>
+        </div>
+        <div class="pipeline-board">
+          <div class="pipeline-column"><div class="pipeline-title"><span>New</span><b id="lead-new">0</b></div><div class="pipeline-empty">New social leads will appear here.</div></div>
+          <div class="pipeline-column"><div class="pipeline-title"><span>Engaged</span><b id="lead-engaged">0</b></div><div class="pipeline-empty">DM and comment conversations.</div></div>
+          <div class="pipeline-column"><div class="pipeline-title"><span>Qualified</span><b id="lead-qualified">0</b></div><div class="pipeline-empty">Qualified prospects.</div></div>
+          <div class="pipeline-column"><div class="pipeline-title"><span>Booked</span><b id="lead-booked">0</b></div><div class="pipeline-empty">Calls generated from content.</div></div>
+          <div class="pipeline-column"><div class="pipeline-title"><span>Client</span><b id="lead-client">0</b></div><div class="pipeline-empty">Closed clients and revenue attribution.</div></div>
+        </div>
       </section>
 
       <section class="view" id="view-accounts">
-        <div class="grid-2">
-          <article class="panel provider"><h2>Instagram</h2><p>Reuses the existing Distributor connector, upgraded for messages + comments.</p><strong id="ig-provider-status">Checking…</strong><button id="instagram-connect">Connect / upgrade Instagram</button></article>
-          <article class="panel provider"><h2>YouTube</h2><p>Reuses the existing YouTube OAuth connection for publishing + metrics.</p><strong id="yt-provider-status">Checking…</strong><button id="youtube-connect">Connect YouTube</button></article>
+        <div class="section-top">
+          <div><h2>Connected Channels</h2><p>The same accounts already used by your Distributor.</p></div>
+          <span id="account-count" class="small-badge"></span>
         </div>
-        <article class="panel"><div class="panel-head"><div><h2>Connection settings</h2><p>Optional campaign/pool assignment continues to feed the Distributor.</p></div></div><div class="form-grid"><label>Campaign<select id="campaign"><option value="">No campaign assignment</option></select></label><label>Pool<select id="pool"><option value="">Campaign pool / create one</option></select></label><label>Daily<input id="daily-limit" type="number" value="4"></label><label>Weekly<input id="weekly-limit" type="number" value="28"></label><label>Gap (min)<input id="min-gap" type="number" value="60"></label></div><div class="callbacks"><p><strong>Meta webhook callback</strong><code id="meta-webhook-url"></code></p><p><strong>Meta verify token</strong><span>Use the value from your Netlify environment.</span></p></div></article>
-        <article class="panel"><div class="panel-head"><div><h2>Accounts</h2><p>Publishing and inbox capabilities from the same account row.</p></div><span id="account-count" class="badge"></span></div><div class="table-wrap"><table><thead><tr><th>Account</th><th>Platform</th><th>Campaign</th><th>Publishing</th><th>Inbox</th><th>Webhook</th><th>Health</th></tr></thead><tbody id="accounts-table"></tbody></table></div></article>
+
+        <div class="provider-grid">
+          <article class="provider-card">
+            <div class="provider-logo instagram">IG</div>
+            <div><strong>Instagram</strong><span id="ig-provider-status">OAuth keys not added yet</span></div>
+          </article>
+          <article class="provider-card">
+            <div class="provider-logo youtube">YT</div>
+            <div><strong>YouTube</strong><span id="yt-provider-status">OAuth keys not added yet</span></div>
+          </article>
+          <article class="provider-card">
+            <div class="provider-logo tiktok">TT</div>
+            <div><strong>TikTok</strong><span>Publishing connected</span></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head"><div><h2>All Channels</h2><p>Existing Distributor accounts and capabilities.</p></div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Account</th><th>Platform</th><th>Status</th><th>Publishing</th><th>Inbox</th><th>Webhook</th><th>Daily Limit</th></tr></thead>
+              <tbody id="accounts-table"></tbody>
+            </table>
+          </div>
+        </article>
       </section>
     </main>
   </div>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>
