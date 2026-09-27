@@ -44,11 +44,19 @@ export default async (request) => {
       body:{media_publish_approved:true,media_approved_at:approvedAt,updated_at:approvedAt}
     });
 
-    await supabaseRequest(`content_publish_queue?asset_id=eq.${encodeURIComponent(assetId)}&status=eq.paused`,{
-      method:'PATCH',
-      body:{status:'ready',updated_at:approvedAt}
-    }).catch(()=>{});
+    const heldRows=await supabaseRequest(
+      `content_publish_queue?asset_id=eq.${encodeURIComponent(assetId)}&media_approval_hold=eq.true&select=id,scheduled_at,media_original_scheduled_at`
+    ).catch(()=>[]);
 
-    return jsonResponse({ok:true,variant_id:variantId,asset_id:assetId,publishing_approved:true});
+    for(const q of heldRows||[]){
+      const original=q.media_original_scheduled_at ? new Date(q.media_original_scheduled_at) : null;
+      const releaseAt=original && original.getTime()>Date.now() ? original.toISOString() : approvedAt;
+      await supabaseRequest(`content_publish_queue?id=eq.${encodeURIComponent(q.id)}`,{
+        method:'PATCH',
+        body:{media_approval_hold:false,scheduled_at:releaseAt,updated_at:approvedAt}
+      });
+    }
+
+    return jsonResponse({ok:true,variant_id:variantId,asset_id:assetId,publishing_approved:true,released_queue_rows:(heldRows||[]).length});
   } catch(error){ return publicError(error,error.status||500); }
 };
