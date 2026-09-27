@@ -327,7 +327,7 @@ button{cursor:pointer}
 .job-error{font-size:8px;color:#b91c1c;background:#fff1f2;border-radius:6px;padding:6px 7px;margin-top:8px;line-height:1.4}
 .campaign-live-progress{margin:13px 0 4px;padding:10px;border-radius:9px;background:#f8fafc;border:1px solid #eef2f7}
 .campaign-live-head,.campaign-live-foot{display:flex;justify-content:space-between;gap:8px}.campaign-live-head{font-size:9px}.campaign-live-head span{color:#64748b}.campaign-live-head strong{color:#111827}.campaign-live-foot{font-size:8px;color:#94a3b8;margin-top:5px}
-.campaign-top{grid-template-columns:1fr auto auto}.campaign-top-actions{display:flex;gap:7px}.campaign-filters{justify-self:end}
+.campaign-top{display:grid;grid-template-columns:1fr auto auto;align-items:end}.campaign-top-actions{display:flex;gap:7px}.campaign-filters{justify-self:end}
 
 /* Campaign + preset forms */
 .form-modal-card,.preset-modal-card{position:relative;width:min(720px,calc(100% - 28px));max-height:92vh;overflow:auto;margin:4vh auto;background:#fff;border-radius:14px;box-shadow:0 30px 80px rgba(15,23,42,.24);padding:20px}
