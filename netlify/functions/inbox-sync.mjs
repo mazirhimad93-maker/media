@@ -1,4 +1,5 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { addUnreadMessages } from './_social-unread.mjs';
 
 const igVersion=()=>process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
 const fbVersion=()=>process.env.FACEBOOK_API_VERSION?.trim()||'v26.0';
@@ -85,50 +86,101 @@ async function facebookConversations(account){
   return out;
 }
 
-async function upsertContact(account,party,workspaceId){
+export async function upsertContact(account,party,workspaceId,db=supabaseRequest){
+  const base=scopedPath('social_contacts?platform=eq.'+encodeURIComponent(account.platform)+
+    '&platform_user_id=eq.'+encodeURIComponent(String(party.id)),workspaceId);
+  const existing=(await db(base+'&select=id,username,display_name,metadata&limit=1'))?.[0];
+  const now=new Date().toISOString();
+  if(existing){
+    const rows=await db(scopedPath('social_contacts?id=eq.'+encodeURIComponent(existing.id),workspaceId)+'&select=*',{
+      method:'PATCH',headers:{Prefer:'return=representation'},
+      body:{
+        ...(party.name?{username:party.name,display_name:party.name}:{}),
+        last_seen_at:now,updated_at:now,
+        metadata:{...(existing.metadata||{}),synced_from:'conversations_api'}
+      }
+    });
+    return rows?.[0]||existing;
+  }
   const conflict=workspaceId?'workspace_id,platform,platform_user_id':'platform,platform_user_id';
-  const rows=await supabaseRequest('social_contacts?on_conflict='+encodeURIComponent(conflict),{
+  const rows=await db('social_contacts?on_conflict='+encodeURIComponent(conflict),{
     method:'POST',
-    headers:{Prefer:'resolution=merge-duplicates,return=representation'},
+    headers:{Prefer:'resolution=ignore-duplicates,return=representation'},
     body:{
       platform:account.platform,
       platform_user_id:String(party.id),
       username:party.name||null,
       display_name:party.name||null,
-      lead_status:'engaged',
-      first_seen_at:new Date().toISOString(),
-      last_seen_at:new Date().toISOString(),
+      last_seen_at:now,
       metadata:{synced_from:'conversations_api'},
       ...(workspaceId?{workspace_id:workspaceId}:{})
     }
   });
-  return rows?.[0]||null;
+  return rows?.[0]||(await db(base+'&select=*&limit=1'))?.[0]||null;
 }
 
-async function upsertConversation(account,contact,remote,messages,workspaceId){
+export async function upsertConversation(account,contact,remote,messages,workspaceId,db=supabaseRequest){
   const last=messages.slice().sort((a,b)=>new Date(a.created_time||0)-new Date(b.created_time||0)).at(-1);
   const inbound=messages.filter(m=>idOf(m.from)!==String(account.platform_account_id));
   const outbound=messages.filter(m=>idOf(m.from)===String(account.platform_account_id));
   const threadId=String(account.platform_account_id)+':'+String(contact.platform_user_id);
+  const base=scopedPath('social_conversations?account_id=eq.'+encodeURIComponent(account.id)+
+    '&platform_thread_id=eq.'+encodeURIComponent(threadId)+'&select=*&limit=1',workspaceId);
+  const existing=(await db(base))?.[0];
+  const metadata={...(existing?.metadata||{}),synced_from:'conversations_api',remote_conversation_id:remote.id};
+  if(existing){
+    const rows=await db(scopedPath('social_conversations?id=eq.'+encodeURIComponent(existing.id),workspaceId)+'&select=*',{
+      method:'PATCH',headers:{Prefer:'return=representation'},body:{metadata}
+    });
+    return rows?.[0]||existing;
+  }
 
-  const rows=await supabaseRequest('social_conversations?on_conflict=account_id,platform_thread_id',{
+  const rows=await db('social_conversations?on_conflict=account_id,platform_thread_id',{
     method:'POST',
-    headers:{Prefer:'resolution=merge-duplicates,return=representation'},
+    headers:{Prefer:'resolution=ignore-duplicates,return=representation'},
     body:{
       account_id:account.id,
       contact_id:contact.id,
       platform:account.platform,
       platform_thread_id:threadId,
-      status:'open',
-      unread_count:0,
       last_message_at:last?.created_time||remote.updated_time||new Date().toISOString(),
       last_inbound_at:inbound.at(-1)?.created_time||null,
       last_outbound_at:outbound.at(-1)?.created_time||null,
-      metadata:{synced_from:'conversations_api',remote_conversation_id:remote.id},
+      metadata,
       ...(workspaceId?{workspace_id:workspaceId}:{})
     }
   });
-  return rows?.[0]||null;
+  return rows?.[0]||(await db(base))?.[0]||null;
+}
+
+const later=(first,second)=>!first?second:!second?first:
+  new Date(first).getTime()>=new Date(second).getTime()?first:second;
+
+export async function recordImportedMessages(batch,workspaceId,db=supabaseRequest){
+  const byConversation=new Map();
+  for(const message of batch){
+    const activity=byConversation.get(message.conversation_id)||{inbound:0,last:null,lastInbound:null,lastOutbound:null};
+    activity.last=later(activity.last,message.sent_at);
+    if(message.direction==='inbound'){
+      activity.inbound++;
+      activity.lastInbound=later(activity.lastInbound,message.sent_at);
+    }else activity.lastOutbound=later(activity.lastOutbound,message.sent_at);
+    byConversation.set(message.conversation_id,activity);
+  }
+  for(const [id,activity] of byConversation){
+    const base=scopedPath('social_conversations?id=eq.'+encodeURIComponent(id),workspaceId);
+    const current=(await db(base+'&select=last_message_at,last_inbound_at,last_outbound_at&limit=1'))?.[0];
+    if(!current) throw new Error('Conversation not found while importing messages');
+    await db(base,{
+      method:'PATCH',body:{
+        last_message_at:later(current.last_message_at,activity.last),
+        last_inbound_at:later(current.last_inbound_at,activity.lastInbound),
+        last_outbound_at:later(current.last_outbound_at,activity.lastOutbound),
+        updated_at:new Date().toISOString()
+      }
+    });
+    await addUnreadMessages(id,activity.inbound,workspaceId,db);
+  }
 }
 
 export default async request=>{
@@ -204,6 +256,7 @@ export default async request=>{
           body:batch
         });
         inserted+=batch.length;
+        await recordImportedMessages(batch,workspaceId);
       }
     }
 

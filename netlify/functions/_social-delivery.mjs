@@ -82,7 +82,12 @@ export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fe
       : [];
     if(!existing?.length) await db('social_messages',{method:'POST',headers:{Prefer:'return=minimal'},body:{conversation_id:job.conversation_id,account_id:job.account_id,contact_id:job.contact_id,platform_message_id:sent.messageId,direction:'outbound',sender_role:'account',message_type:job.metadata?.attachment?.type||(job.reply_mode==='private_reply'?'private_reply':'text'),body:job.body,media_url:job.metadata?.attachment?.url||null,delivery_status:'sent',sent_at:now,raw_json:sent.raw}});
   }catch(error){ console.error('Could not record delivered social message',error); }
-  await db(`social_conversations?id=eq.${encodeURIComponent(job.conversation_id)}`,{method:'PATCH',body:{last_message_at:now,last_outbound_at:now,unread_count:0,updated_at:now}}).catch(console.error);
+  await db(scopedPath(`social_conversations?id=eq.${encodeURIComponent(job.conversation_id)}`,job.workspace_id),{method:'PATCH',body:{last_message_at:now,last_outbound_at:now,updated_at:now}}).catch(console.error);
+  // Reaching out moves a new contact to Engaged, but never overwrites a stage
+  // the team already selected (Qualified, Booked, and so on).
+  await db(scopedPath(`social_contacts?id=eq.${encodeURIComponent(contact.id)}&lead_status=eq.new`,job.workspace_id),{
+    method:'PATCH',body:{lead_status:'engaged',updated_at:now}
+  }).catch(console.error);
   await db('growth_events',{method:'POST',body:{event_type:'social_reply_sent',occurred_at:now,platform:account.platform,source:'manual_social_inbox',account_id:account.id,social_contact_id:contact.id,social_conversation_id:job.conversation_id,metadata:{outbox_id:job.id,reply_mode:job.reply_mode}}}).catch(()=>{});
   return {id:job.id,status:'sent',sent:true,platform_message_id:sent.messageId};
 }

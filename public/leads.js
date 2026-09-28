@@ -9,16 +9,27 @@ function renderLeads() {
   if (!app) return;
   const unique = new Map();
   for (const lead of leadRows) {
-    if (!unique.has(lead.contact_id)) unique.set(lead.contact_id, lead);
+    const previous = unique.get(lead.contact_id);
+    const unread = Number(lead.unread_count || 0);
+    if (!previous) unique.set(lead.contact_id, { ...lead, total_unread: unread });
+    else {
+      const total = previous.total_unread + unread;
+      if (!Number(previous.unread_count || 0) && unread) unique.set(lead.contact_id, { ...lead, total_unread: total });
+      else previous.total_unread = total;
+    }
   }
   const rows = [...unique.values()];
   for (const stage of stages) {
     const cards = rows.filter((lead) => stageFor(lead.lead_status) === stage);
     document.getElementById('lead-' + stage).textContent = String(cards.length);
+    const unread = cards.reduce((sum, lead) => sum + lead.total_unread, 0);
+    document.querySelector(`#lead-stage-filter option[value="${stage}"]`).textContent =
+      stage.charAt(0).toUpperCase() + stage.slice(1) + (unread ? ` · ${unread} unread` : '');
     document.getElementById('lead-cards-' + stage).innerHTML = cards.length ? cards.map((lead) => `
-      <article class="lead-card" draggable="true" data-id="${app.esc(lead.contact_id)}" data-conversation="${app.esc(lead.conversation_id)}">
+      <article class="lead-card ${lead.total_unread ? 'unread' : ''}" draggable="true" data-id="${app.esc(lead.contact_id)}" data-conversation="${app.esc(lead.conversation_id)}">
         <div class="lead-card-head"><strong>${app.esc(lead.contact_display_name || lead.contact_username || 'Social lead')}</strong><span>${app.esc(app.platformLabel(lead.platform))}</span></div>
         <div class="lead-card-account">@${app.esc(lead.account_username || 'account')}${lead.lead_status === 'registered' ? ' · Registered' : ''}</div>
+        ${lead.total_unread ? `<div class="lead-unread"><span class="lead-unread-dot" aria-hidden="true"></span>${lead.total_unread} unread message${lead.total_unread === 1 ? '' : 's'}</div>` : ''}
         <p>${app.esc(String(lead.last_message || 'No recent message').slice(0, 110))}</p>
         <div class="lead-card-actions">
           <button class="text-btn lead-open" type="button">Open chat</button>

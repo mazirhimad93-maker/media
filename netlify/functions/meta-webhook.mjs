@@ -1,4 +1,5 @@
 import { jsonResponse, scopedPath, supabaseRequest, verifyMetaSignature } from './_shared.mjs';
+import { addUnreadMessages } from './_social-unread.mjs';
 
 const textResponse=(body,status=200)=>new Response(String(body),{status,headers:{'content-type':'text/plain; charset=utf-8'}});
 
@@ -10,27 +11,40 @@ async function accountFor(platformId){
   return rows?.[0]?.metadata?.disconnected_at ? null : rows?.[0]||null;
 }
 
-async function upsertContact({account,platformUserId,username=null,displayName=null,metadata={}}){
+export async function upsertContact({account,platformUserId,username=null,displayName=null,metadata={}},db=supabaseRequest){
   if(!platformUserId||!account) return null;
   const workspaceId=account.workspace_id||null;
-  const query=workspaceId
-    ? 'social_contacts?on_conflict=workspace_id,platform,platform_user_id'
-    : 'social_contacts?on_conflict=platform,platform_user_id';
-
-  const rows=await supabaseRequest(query,{
+  const base=scopedPath(
+    'social_contacts?platform=eq.'+encodeURIComponent(account.platform)+
+    '&platform_user_id=eq.'+encodeURIComponent(String(platformUserId)),workspaceId
+  );
+  const existing=(await db(base+'&select=id,username,display_name,metadata&limit=1'))?.[0];
+  const now=new Date().toISOString();
+  if(existing){
+    const rows=await db(scopedPath('social_contacts?id=eq.'+encodeURIComponent(existing.id),workspaceId)+'&select=*',{
+      method:'PATCH',headers:{Prefer:'return=representation'},
+      body:{
+        ...(username?{username}:{}),...(displayName?{display_name:displayName}:{}),
+        last_seen_at:now,updated_at:now,metadata:{...(existing.metadata||{}),...metadata}
+      }
+    });
+    return rows?.[0]||existing;
+  }
+  const conflict=workspaceId?'workspace_id,platform,platform_user_id':'platform,platform_user_id';
+  const rows=await db('social_contacts?on_conflict='+encodeURIComponent(conflict),{
     method:'POST',
-    headers:{Prefer:'resolution=merge-duplicates,return=representation'},
+    headers:{Prefer:'resolution=ignore-duplicates,return=representation'},
     body:{
       platform:account.platform,
       platform_user_id:String(platformUserId),
       username,
       display_name:displayName,
-      last_seen_at:new Date().toISOString(),
+      last_seen_at:now,
       metadata,
       ...(workspaceId?{workspace_id:workspaceId}:{})
     }
   });
-  return rows?.[0]||null;
+  return rows?.[0]||(await db(base+'&select=*&limit=1'))?.[0]||null;
 }
 
 async function sourceHistoryFor(account,sourceExternalPostId){
@@ -51,21 +65,31 @@ async function sourceHistoryFor(account,sourceExternalPostId){
 }
 
 async function upsertConversation({account,contact,threadId,sourceExternalPostId=null,metadata={}}){
-  const existing=await supabaseRequest(
-    'social_conversations?account_id=eq.'+encodeURIComponent(account.id)+
+  const base=scopedPath('social_conversations?account_id=eq.'+encodeURIComponent(account.id)+
     '&platform_thread_id=eq.'+encodeURIComponent(threadId)+
-    '&select=id,source_history_id,source_external_post_id,metadata&limit=1'
-  ).catch(()=>[]);
+    '&select=*&limit=1',account.workspace_id);
+  const existing=(await supabaseRequest(base))?.[0];
 
   const sourceHistoryId=sourceExternalPostId
     ? await sourceHistoryFor(account,sourceExternalPostId)
-    : existing?.[0]?.source_history_id||null;
+    : existing?.source_history_id||null;
 
-  const preservedExternal=sourceExternalPostId||existing?.[0]?.source_external_post_id||null;
+  const preservedExternal=sourceExternalPostId||existing?.source_external_post_id||null;
+  if(existing){
+    const rows=await supabaseRequest(scopedPath('social_conversations?id=eq.'+encodeURIComponent(existing.id),account.workspace_id)+'&select=*',{
+      method:'PATCH',headers:{Prefer:'return=representation'},
+      body:{
+        ...(sourceHistoryId?{source_history_id:sourceHistoryId}:{}),
+        ...(preservedExternal?{source_external_post_id:preservedExternal}:{}),
+        metadata:{...(existing.metadata||{}),...metadata}
+      }
+    });
+    return rows?.[0]||existing;
+  }
 
   const rows=await supabaseRequest('social_conversations?on_conflict=account_id,platform_thread_id',{
     method:'POST',
-    headers:{Prefer:'resolution=merge-duplicates,return=representation'},
+    headers:{Prefer:'resolution=ignore-duplicates,return=representation'},
     body:{
       account_id:account.id,
       contact_id:contact.id,
@@ -73,18 +97,16 @@ async function upsertConversation({account,contact,threadId,sourceExternalPostId
       platform_thread_id:threadId,
       source_history_id:sourceHistoryId,
       source_external_post_id:preservedExternal,
-      status:'open',
-      last_message_at:new Date().toISOString(),
-      metadata:{...(existing?.[0]?.metadata||{}),...metadata},
+      metadata,
       ...(account.workspace_id?{workspace_id:account.workspace_id}:{})
     }
   });
-  return rows?.[0]||null;
+  return rows?.[0]||(await supabaseRequest(base))?.[0]||null;
 }
 
-async function insertMessage({conversation,account,contact,platformMessageId,direction='inbound',type='text',body=null,mediaUrl=null,raw={}}){
+export async function insertMessage({conversation,account,contact,platformMessageId,direction='inbound',type='text',body=null,mediaUrl=null,raw={}},db=supabaseRequest){
   const existing=platformMessageId
-    ? await supabaseRequest(
+    ? await db(
         'social_messages?account_id=eq.'+encodeURIComponent(account.id)+
         '&platform_message_id=eq.'+encodeURIComponent(platformMessageId)+
         '&select=id&limit=1'
@@ -94,7 +116,7 @@ async function insertMessage({conversation,account,contact,platformMessageId,dir
   if(existing?.[0]) return existing[0];
 
   const now=new Date().toISOString();
-  const rows=await supabaseRequest('social_messages',{
+  const rows=await db('social_messages',{
     method:'POST',
     headers:{Prefer:'return=representation'},
     body:{
@@ -114,37 +136,32 @@ async function insertMessage({conversation,account,contact,platformMessageId,dir
     }
   });
 
-  const unread=direction==='inbound'
-    ? Number(conversation.unread_count||0)+1
-    : Number(conversation.unread_count||0);
-
-  await supabaseRequest(
-    'social_conversations?id=eq.'+encodeURIComponent(conversation.id),
+  await db(
+    scopedPath('social_conversations?id=eq.'+encodeURIComponent(conversation.id),account.workspace_id),
     {
       method:'PATCH',
       body:{
         last_message_at:now,
-        last_inbound_at:direction==='inbound'?now:conversation.last_inbound_at||null,
-        last_outbound_at:direction==='outbound'?now:conversation.last_outbound_at||null,
-        unread_count:unread,
+        ...(direction==='inbound'?{last_inbound_at:now}:{last_outbound_at:now}),
         updated_at:now
       }
     }
-  ).catch(()=>{});
+  );
 
   if(direction==='inbound'){
-    await supabaseRequest(
-      'social_contacts?id=eq.'+encodeURIComponent(contact.id),
-      {method:'PATCH',body:{lead_status:'engaged',last_seen_at:now,updated_at:now}}
+    await addUnreadMessages(conversation.id,1,account.workspace_id,db);
+    await db(
+      scopedPath('social_contacts?id=eq.'+encodeURIComponent(contact.id),account.workspace_id),
+      {method:'PATCH',body:{last_seen_at:now,updated_at:now}}
     ).catch(()=>{});
 
-    const captured=await supabaseRequest(
+    const captured=await db(
       'growth_events?social_contact_id=eq.'+encodeURIComponent(contact.id)+
       '&event_type=eq.lead_captured&select=id&limit=1'
     ).catch(()=>[]);
 
     if(!captured?.[0]){
-      await supabaseRequest('growth_events',{
+      await db('growth_events',{
         method:'POST',
         body:{
           event_type:'lead_captured',
@@ -160,7 +177,7 @@ async function insertMessage({conversation,account,contact,platformMessageId,dir
       }).catch(()=>{});
     }
 
-    await supabaseRequest('growth_events',{
+    await db('growth_events',{
       method:'POST',
       body:{
         event_type:type==='comment'?'social_comment_received':'social_message_received',
@@ -174,6 +191,11 @@ async function insertMessage({conversation,account,contact,platformMessageId,dir
         ...(account.workspace_id?{workspace_id:account.workspace_id}:{})
       }
     }).catch(()=>{});
+  }else{
+    await db(
+      scopedPath('social_contacts?id=eq.'+encodeURIComponent(contact.id)+'&lead_status=eq.new',account.workspace_id),
+      {method:'PATCH',body:{lead_status:'engaged',updated_at:now}}
+    ).catch(()=>{});
   }
 
   return rows?.[0]||null;
