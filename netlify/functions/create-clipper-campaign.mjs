@@ -1,4 +1,4 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 const slugify=s=>String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,90);
 const directMedia=url=>/\.(mp4|m4v|mov|webm)(?:$|[?#])/i.test(url);
 const provider=url=>{
@@ -14,7 +14,7 @@ const provider=url=>{
 
 export default async request=>{
   try{
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     if(request.method!=='POST') return jsonResponse({error:'Method not allowed'},405);
 
     const body=await request.json();
@@ -25,7 +25,7 @@ export default async request=>{
     const presetVersion=Math.max(1,Number(body.preset_version||1));
     const operationMode=String(body.operation_mode||'long_form_clip');
     const selectorMode=String(body.selector_mode||'ollama_ranked');
-    const desiredClips=Math.max(1,Math.min(3,Number(body.desired_clips||3)));
+    const desiredClips=Math.max(1,Math.min(1000,Math.round(Number(body.desired_clips||3))));
     const editingPrompt=String(body.editing_prompt||'').trim();
     const ctaText=String(body.cta_text||'').trim();
 
@@ -36,13 +36,14 @@ export default async request=>{
     if(!['ollama_ranked','chatgpt_external','full_source_locked'].includes(selectorMode)) return jsonResponse({error:'Invalid selector mode'},400);
 
     let slug=slugify(body.slug||name);
-    const existing=await supabaseRequest(`distribution_campaigns?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`).catch(()=>[]);
+    const existing=await supabaseRequest(scopedPath(`distribution_campaigns?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`,workspaceId)).catch(()=>[]);
     if(existing?.length) slug=`${slug}-${Date.now().toString(36).slice(-5)}`;
 
     const creativeRules={
       preset_slug:presetSlug,
       preset_version:presetVersion,
-      desired_clip_count:desiredClips
+      desired_clip_count:desiredClips,
+      max_moments:desiredClips
     };
     if(editingPrompt) creativeRules.editing_prompt=editingPrompt;
     if(ctaText) creativeRules.cta_text=ctaText;
@@ -57,7 +58,8 @@ export default async request=>{
         clip_preset_version:presetVersion,
         creative_rules:creativeRules,
         hook_rules:{},
-        posting_rules:{}
+        posting_rules:{},
+        ...(workspaceId?{workspace_id:workspaceId}:{})
       }
     });
     const campaign=campaigns?.[0];
@@ -106,7 +108,8 @@ export default async request=>{
         operation_mode:operationMode,
         clip_preset_slug:presetSlug,
         clip_preset_version:presetVersion,
-        error_message:null
+        error_message:null,
+        ...(workspaceId?{workspace_id:workspaceId}:{})
       }
     });
 
