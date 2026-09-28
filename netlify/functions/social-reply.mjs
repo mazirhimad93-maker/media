@@ -1,7 +1,7 @@
-import { jsonResponse, publicError, requireAdmin, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 export default async (request) => {
   try {
-    requireAdmin(request);
+    await requireUser(request);
     if(request.method!=='POST') throw Object.assign(new Error('POST required'),{status:405});
     const input=await request.json(); const conversationId=String(input.conversationId||''); const body=String(input.body||'').trim();
     if(!conversationId||!body) throw Object.assign(new Error('conversationId and body are required'),{status:400});
