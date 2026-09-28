@@ -860,27 +860,28 @@ function renderCampaigns(){
 
   $('campaign-summary').innerHTML=[
     stat('Campaigns',s.total||0,'blue','▤'),
-    stat('Active',s.active||0,'green','✓'),
-    stat('Clips',s.clips||0,'orange','✂'),
-    stat('Needs Approval',s.needs_approval||0,'purple','!'),
-    stat('Published Posts',s.published||0,'cyan','▶')
+    stat('Published',s.published||0,'green','▶'),
+    stat('Views',s.views||0,'orange','↗'),
+    stat('Messages',s.messages||0,'purple','✉'),
+    stat('DM Threads',s.conversations||0,'cyan','◉'),
+    stat('Link Clicks',s.link_clicks||0,'blue','↗')
   ].join('');
 
   const rows=campaignFilterRows();
 
   $('campaign-grid').innerHTML=rows.length
-    ? rows.map(c=>`
+    ? rows.map(campaign=>`
       <article class="campaign-card">
         <div class="campaign-card-head">
           <div>
-            <h3>${esc(c.name||'Untitled campaign')}</h3>
-            <p>${esc(c.description||c.pool_name||'Media distribution campaign')}</p>
+            <h3>${esc(campaign.name||'Untitled campaign')}</h3>
+            <p>${esc(campaign.description||campaign.pool_name||'Media distribution campaign')}</p>
           </div>
-          <span class="campaign-status ${c.status==='active'?'active':''}">${esc(c.status||'unknown')}</span>
+          <span class="campaign-status ${campaign.status==='active'?'active':''}">${esc(campaign.status||'unknown')}</span>
         </div>
 
         ${(()=>{
-          const live=campaignLiveProgress(c.id);
+          const live=campaignLiveProgress(campaign.id);
           if(!live) return '';
           const progress=Math.max(0,Math.min(100,Number(live.progress||0)));
           const eta=live.waiting?'Waiting for selection':(live.error?'Needs attention':(live.eta_minutes?`≈ ${Math.round(live.eta_minutes)} min left`:(progress>=100?'Complete':'Working…')));
@@ -893,33 +894,38 @@ function renderCampaigns(){
           `;
         })()}
 
-        <div class="campaign-kpis">
-          <div class="campaign-kpi"><strong>${fmt(c.clips)}</strong><span>clips</span></div>
-          <div class="campaign-kpi"><strong>${fmt(c.needs_approval)}</strong><span>needs approval</span></div>
-          <div class="campaign-kpi"><strong>${fmt(c.published)}</strong><span>published</span></div>
-          <div class="campaign-kpi"><strong>${fmt(c.views)}</strong><span>views</span></div>
+        <div class="campaign-kpis campaign-kpis-six">
+          <div class="campaign-kpi"><strong>${fmt(campaign.clips)}</strong><span>clips</span></div>
+          <div class="campaign-kpi"><strong>${fmt(campaign.published)}</strong><span>published</span></div>
+          <div class="campaign-kpi"><strong>${fmt(campaign.views)}</strong><span>views</span></div>
+          <div class="campaign-kpi"><strong>${fmt(campaign.messages)}</strong><span>messages</span></div>
+          <div class="campaign-kpi"><strong>${fmt(campaign.conversations)}</strong><span>DM threads</span></div>
+          <div class="campaign-kpi"><strong>${fmt(campaign.link_clicks)}</strong><span>link clicks</span></div>
         </div>
 
-        <div class="campaign-meta">
-          <div class="campaign-meta-row"><span>Distribution pool</span><strong>${esc(c.pool_name||'Not assigned')}</strong></div>
-          <div class="campaign-meta-row"><span>Queue</span><strong>${fmt(c.ready)} ready · ${fmt(c.running)} running · ${fmt(c.failed)} failed</strong></div>
+        ${Number(campaign.needs_approval||0)>0
+          ? `<div class="campaign-attention">${fmt(campaign.needs_approval)} clips need approval</div>`
+          : ''}
+
+        <div class="campaign-meta campaign-meta-compact">
+          <div class="campaign-meta-row"><span>Queue</span><strong>${fmt(campaign.ready)} ready · ${fmt(campaign.running)} running · ${fmt(campaign.failed)} failed</strong></div>
           <div class="campaign-meta-row">
             <span>Platforms</span>
-            <strong class="campaign-platforms">${(c.platforms||[]).length?(c.platforms||[]).map(p=>`<span class="mini-chip">${esc(platformLabel(p))}</span>`).join(''):'—'}</strong>
+            <strong class="campaign-platforms">${(campaign.platforms||[]).length?(campaign.platforms||[]).map(p=>`<span class="mini-chip">${esc(platformLabel(p))}</span>`).join(''):'—'}</strong>
           </div>
           <div class="campaign-meta-row">
             <span>Channels</span>
-            <strong class="campaign-channels">${(c.channels||[]).length?(c.channels||[]).slice(0,6).map(a=>`<span class="mini-chip">${esc(a.username)}</span>`).join(''):'—'}${(c.channels||[]).length>6?`<span class="mini-chip">+${c.channels.length-6}</span>`:''}</strong>
+            <strong class="campaign-channels">${(campaign.channels||[]).length?(campaign.channels||[]).slice(0,4).map(a=>`<span class="mini-chip">${esc(a.username)}</span>`).join(''):'—'}${(campaign.channels||[]).length>4?`<span class="mini-chip">+${campaign.channels.length-4}</span>`:''}</strong>
           </div>
         </div>
 
         <div class="campaign-actions">
-          <button class="secondary-btn campaign-clips" data-id="${esc(c.id)}">View Clips</button>
-          <button class="secondary-btn campaign-content" data-id="${esc(c.id)}">View Content</button>
+          <button class="secondary-btn campaign-clips" data-id="${esc(campaign.id)}">View Clips</button>
+          <button class="secondary-btn campaign-content" data-id="${esc(campaign.id)}">View Content</button>
         </div>
       </article>
     `).join('')
-    : '<div class="card empty-row">No campaigns match the current filters.</div>';
+    : '<div class="card empty-row">No campaigns yet. Create your first campaign to get started.</div>';
 
   document.querySelectorAll('.campaign-clips').forEach(btn=>{
     btn.onclick=()=>{
