@@ -1,33 +1,85 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const safe=async path=>supabaseRequest(path).catch(()=>[]);
 
 export default async (request) => {
   try{
-    await requireUser(request);
-    const [campaigns,pools,memberships,accounts,variants,assets,queue,history,metrics]=await Promise.all([
-      safe('content_campaigns?select=*&limit=500'),
-      safe('content_distribution_pools?select=*&limit=200'),
-      safe('content_distribution_pool_accounts?select=pool_id,account_id,is_active,priority,weight&limit=2000'),
-      safe('content_accounts?select=id,platform,username,display_name,status,is_active&limit=1000'),
-      safe('clip_variants?select=id,campaign_id,status,created_at&limit=2000'),
-      safe('content_assets?select=id,campaign_id,clip_variant_id,media_publish_approved,publish_count,status,created_at&limit=2000'),
-      safe('content_publish_queue?select=id,campaign_id,asset_id,platform,status,external_post_id,external_post_url,selected_account_id,account_id,created_at,finished_at&limit=5000'),
-      safe('content_history?select=id,queue_id,event_type,created_at&order=created_at.desc&limit=7000'),
-      safe('post_metrics_snapshots?select=history_id,captured_at,views,likes,comments,shares,saves&order=captured_at.desc&limit=10000')
+    const {workspaceId}=await requireWorkspace(request);
+
+    const [campaigns,pools,memberships,accounts,variants,assets,queue,history,metrics,links,clicks,conversations,messages]=await Promise.all([
+      safe(scopedPath('content_campaigns?select=*&limit=500',workspaceId)),
+      safe(scopedPath('content_distribution_pools?select=*&limit=500',workspaceId)),
+      safe(scopedPath('content_distribution_pool_accounts?select=pool_id,account_id,is_active,priority,weight&limit=5000',workspaceId)),
+      safe(scopedPath('content_accounts?select=id,platform,username,display_name,status,is_active&limit=3000',workspaceId)),
+      safe(scopedPath('clip_variants?select=id,campaign_id,status,created_at&limit=10000',workspaceId)),
+      safe(scopedPath('content_assets?select=id,campaign_id,clip_variant_id,media_publish_approved,publish_count,status,created_at&limit=10000',workspaceId)),
+      safe(scopedPath('content_publish_queue?select=id,campaign_id,asset_id,platform,status,external_post_id,external_post_url,selected_account_id,account_id,created_at,finished_at&limit=20000',workspaceId)),
+      safe(scopedPath('content_history?select=id,queue_id,campaign_id,account_id,event_type,created_at&order=created_at.desc&limit=25000',workspaceId)),
+      safe(scopedPath('post_metrics_snapshots?select=history_id,captured_at,views,likes,comments,shares,saves&order=captured_at.desc&limit=30000',workspaceId)),
+      safe(scopedPath('tracked_links?select=id,campaign_id,asset_id,history_id&limit=10000',workspaceId)),
+      safe(scopedPath('tracked_link_clicks?select=tracked_link_id,occurred_at&limit=30000',workspaceId)),
+      safe(scopedPath('social_conversations?select=id,account_id,source_history_id,source_external_post_id,created_at&limit=10000',workspaceId)),
+      safe(scopedPath('social_messages?select=id,conversation_id,direction,sent_at,created_at&limit=30000',workspaceId))
     ]);
 
     const poolById=new Map((pools||[]).map(x=>[x.id,x]));
     const accountById=new Map((accounts||[]).map(x=>[x.id,x]));
     const variantCampaign=new Map((variants||[]).map(v=>[v.id,v.campaign_id]));
+    const assetById=new Map((assets||[]).map(a=>[a.id,a]));
+    const queueById=new Map((queue||[]).map(q=>[q.id,q]));
 
     const historyByQueue=new Map();
+    const historyCampaign=new Map();
     for(const h of history||[]){
       if(h.queue_id && !historyByQueue.has(h.queue_id)) historyByQueue.set(h.queue_id,h);
+      const q=h.queue_id?queueById.get(h.queue_id):null;
+      const a=q?.asset_id?assetById.get(q.asset_id):null;
+      const campaignId=h.campaign_id||q?.campaign_id||a?.campaign_id||(a?.clip_variant_id?variantCampaign.get(a.clip_variant_id):null)||null;
+      if(campaignId) historyCampaign.set(h.id,campaignId);
     }
+
     const metricByHistory=new Map();
     for(const m of metrics||[]){
       if(m.history_id && !metricByHistory.has(m.history_id)) metricByHistory.set(m.history_id,m);
+    }
+
+    const externalCampaign=new Map();
+    for(const q of queue||[]){
+      const a=q.asset_id?assetById.get(q.asset_id):null;
+      const campaignId=q.campaign_id||a?.campaign_id||(a?.clip_variant_id?variantCampaign.get(a.clip_variant_id):null)||null;
+      if(campaignId && q.external_post_id) externalCampaign.set(String(q.external_post_id),campaignId);
+    }
+
+    const linkCampaign=new Map();
+    for(const l of links||[]){
+      const a=l.asset_id?assetById.get(l.asset_id):null;
+      const campaignId=l.campaign_id||(l.history_id?historyCampaign.get(l.history_id):null)||a?.campaign_id||(a?.clip_variant_id?variantCampaign.get(a.clip_variant_id):null)||null;
+      if(campaignId) linkCampaign.set(l.id,campaignId);
+    }
+
+    const clickCountByCampaign=new Map();
+    for(const click of clicks||[]){
+      const campaignId=linkCampaign.get(click.tracked_link_id);
+      if(campaignId) clickCountByCampaign.set(campaignId,(clickCountByCampaign.get(campaignId)||0)+1);
+    }
+
+    const conversationCampaign=new Map();
+    for(const conv of conversations||[]){
+      const campaignId=(conv.source_history_id?historyCampaign.get(conv.source_history_id):null)
+        ||(conv.source_external_post_id?externalCampaign.get(String(conv.source_external_post_id)):null)
+        ||null;
+      if(campaignId) conversationCampaign.set(conv.id,campaignId);
+    }
+
+    const conversationCountByCampaign=new Map();
+    for(const campaignId of conversationCampaign.values()){
+      conversationCountByCampaign.set(campaignId,(conversationCountByCampaign.get(campaignId)||0)+1);
+    }
+
+    const messageCountByCampaign=new Map();
+    for(const message of messages||[]){
+      const campaignId=conversationCampaign.get(message.conversation_id);
+      if(campaignId) messageCountByCampaign.set(campaignId,(messageCountByCampaign.get(campaignId)||0)+1);
     }
 
     const rows=(campaigns||[]).map(c=>{
@@ -84,6 +136,9 @@ export default async (request) => {
         failed:failed.length,
         published:published.length,
         views,likes,comments,shares,saves,
+        link_clicks:clickCountByCampaign.get(c.id)||0,
+        conversations:conversationCountByCampaign.get(c.id)||0,
+        messages:messageCountByCampaign.get(c.id)||0,
         platforms:[...new Set(campaignQueue.map(q=>q.platform).filter(Boolean))],
         channels:channels.map(a=>({id:a.id,platform:a.platform,username:a.username||a.display_name||a.id})),
         published_urls:published.map(q=>({platform:q.platform,url:q.external_post_url,id:q.external_post_id,status:q.status})).filter(x=>x.url||x.id)
@@ -104,7 +159,10 @@ export default async (request) => {
         clips:rows.reduce((n,x)=>n+x.clips,0),
         needs_approval:rows.reduce((n,x)=>n+x.needs_approval,0),
         published:rows.reduce((n,x)=>n+x.published,0),
-        views:rows.reduce((n,x)=>n+x.views,0)
+        views:rows.reduce((n,x)=>n+x.views,0),
+        link_clicks:rows.reduce((n,x)=>n+x.link_clicks,0),
+        conversations:rows.reduce((n,x)=>n+x.conversations,0),
+        messages:rows.reduce((n,x)=>n+x.messages,0)
       }
     });
   }catch(error){
