@@ -1,7 +1,7 @@
-import { jsonResponse, outreachRequest, publicError, requireAdmin, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, outreachRequest, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 export default async (request) => {
   try {
-    requireAdmin(request);
+    await requireUser(request);
     const url=new URL(request.url); const source=url.searchParams.get('source')||'all'; const limit=Math.min(200,Math.max(1,Number(url.searchParams.get('limit')||100))); const offset=Math.max(0,Number(url.searchParams.get('offset')||0));
     const result={social:[],email:[]};
     if(source==='all'||source==='social') result.social=await supabaseRequest(`v_social_inbox?select=*&order=last_message_at.desc.nullslast&limit=${limit}&offset=${offset}`).catch(()=>[]);
