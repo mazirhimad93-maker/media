@@ -85,6 +85,10 @@
   to = "/.netlify/functions/clip-action"
   status = 200
 [[redirects]]
+  from = "/api/clips/render/recover"
+  to = "/.netlify/functions/clip-render-recover"
+  status = 200
+[[redirects]]
   from = "/api/content"
   to = "/.netlify/functions/content-data"
   status = 200
