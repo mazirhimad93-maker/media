@@ -43,13 +43,13 @@ export default async (request) => {
 
     const expiresAt = new Date(Date.now()+Number(longToken.expires_in || 5184000)*1000).toISOString();
     const subscription = await subscribeAccount(String(accountId), longToken.access_token).catch((e)=>({ok:false,data:{message:e.message}}));
-    const scope = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages';
+    const scope = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_insights';
     const result = await upsertConnectedAccount({
       platform:'instagram_reels', platform_account_id:String(accountId), username:profile.username || String(accountId), display_name:profile.username || String(accountId),
       status:'active', is_active:true, health_status:'healthy', access_token:longToken.access_token, refresh_token:null, token_type:'Bearer', token_expires_at:expiresAt,
       scope, daily_limit:state.dailyLimit, weekly_limit:state.weeklyLimit, min_gap_minutes:state.minGapMinutes, error_message:null,
       webhook_status:subscription.ok ? 'subscribed' : 'needs_attention',
-      capabilities_json:{publish:true,messages_read:true,messages_send:true,webhooks:subscription.ok},
+      capabilities_json:{publish:true,messages_read:true,messages_send:true,analytics:true,webhooks:subscription.ok},
       settings_json:{share_to_feed:true},
       metadata:{oauth_provider:'instagram',connected_at:new Date().toISOString(),instagram_scoped_id:profile.id || null,webhook_subscription:subscription.data}
     }, assignmentFromState(state));
