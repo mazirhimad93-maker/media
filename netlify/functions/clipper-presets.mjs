@@ -1,16 +1,15 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
-const WRITE_KEY='alchemic2026';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 const slugify=s=>String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80);
 
 export default async request=>{
   try{
+    await requireUser(request);
     if(request.method==='GET'){
       const rows=await supabaseRequest('clip_presets?select=id,slug,name,description,category,status,renderer_contract_version,current_version,preset_json,preview_url,is_system,created_at,updated_at&status=neq.archived&order=name.asc').catch(()=>[]);
       return jsonResponse({presets:rows||[]});
     }
 
     if(request.method!=='POST') return jsonResponse({error:'Method not allowed'},405);
-    if((request.headers.get('x-media-password')||'')!==WRITE_KEY) return jsonResponse({error:'Invalid media password'},401);
 
     const body=await request.json();
     const name=String(body.name||'').trim();
