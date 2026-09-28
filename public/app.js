@@ -1388,6 +1388,11 @@ document.querySelectorAll('[data-jump]').forEach(el=>{
 });
 
 $('refresh-all').addEventListener('click',load);
+if($('open-settings-menu')) $('open-settings-menu').addEventListener('click',()=>{
+  $('user-menu-popover').hidden=true;
+  setView('settings');
+  loadSettings();
+});
 
 $('clip-status-filter').addEventListener('change',renderClips);
 $('clip-campaign-filter').addEventListener('change',renderClips);
