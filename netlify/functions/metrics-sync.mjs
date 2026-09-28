@@ -1,4 +1,4 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 async function refreshYouTube(account){
   if(account.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
@@ -71,19 +71,22 @@ async function instagramMetrics(post,account){
 
 export default async request=>{
   try{
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     if(request.method!=='POST') throw Object.assign(new Error('POST required'),{status:405});
     const input=await request.json().catch(()=>({}));
     const limit=Math.min(100,Math.max(1,Number(input.limit||50)));
 
     const posts=await supabaseRequest(
-      `content_publish_queue?external_post_id=not.is.null&select=id,asset_id,platform,external_post_id,external_post_url,selected_account_id,account_id,status,finished_at&order=finished_at.desc.nullslast&limit=${limit}`
+      scopedPath(
+        `content_publish_queue?external_post_id=not.is.null&select=id,asset_id,platform,external_post_id,external_post_url,selected_account_id,account_id,status,finished_at&order=finished_at.desc.nullslast&limit=${limit}`,
+        workspaceId
+      )
     );
 
     const results=[];
     for(const post of posts||[]){
       const historyRows=await supabaseRequest(
-        `content_history?queue_id=eq.${encodeURIComponent(post.id)}&event_type=eq.published&select=id,queue_id,account_id,platform,created_at&order=created_at.desc&limit=1`
+        scopedPath(`content_history?queue_id=eq.${encodeURIComponent(post.id)}&event_type=eq.published&select=id,queue_id,account_id,platform,created_at&order=created_at.desc&limit=1`,workspaceId)
       ).catch(()=>[]);
       const history=historyRows?.[0];
       if(!history){
@@ -98,7 +101,7 @@ export default async request=>{
       }
 
       const accountRows=await supabaseRequest(
-        `content_accounts?id=eq.${encodeURIComponent(accountId)}&select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,settings_json&limit=1`
+        scopedPath(`content_accounts?id=eq.${encodeURIComponent(accountId)}&select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,settings_json&limit=1`,workspaceId)
       );
       const account=accountRows?.[0];
       if(!account) continue;
@@ -122,7 +125,8 @@ export default async request=>{
             comments:m.comments,
             shares:m.shares,
             saves:m.saves,
-            raw_json:m.raw_json
+            raw_json:m.raw_json,
+            ...(workspaceId?{workspace_id:workspaceId}:{})
           }
         });
         results.push({history_id:history.id,queue_id:post.id,platform:account.platform,status:'ok',views:m.views});
