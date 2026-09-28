@@ -42,7 +42,7 @@ export default async (request) => {
         access_token: result.access_token,
         expires_in: result.expires_in || 3600,
         user: { id: user.id, email: user.email || email },
-        profile,
+        profile: workspaceContext.membership?.role ? {...profile,role:workspaceContext.membership.role,default_workspace_id:workspaceContext.workspace?.id||profile.default_workspace_id||null} : profile,
         workspace: workspaceContext.workspace || null,
       }, 201, {
         'set-cookie': refreshCookie(result.refresh_token),
@@ -54,7 +54,7 @@ export default async (request) => {
       requires_verification: true,
       message: 'Account created. Check your email to confirm the account, then sign in.',
       user: { id: user.id, email: user.email || email },
-      profile,
+      profile: workspaceContext.membership?.role ? {...profile,role:workspaceContext.membership.role,default_workspace_id:workspaceContext.workspace?.id||profile.default_workspace_id||null} : profile,
       workspace: workspaceContext.workspace || null,
     }, 201);
   } catch (error) {
