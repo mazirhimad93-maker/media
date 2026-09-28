@@ -122,6 +122,8 @@ function setView(name){
 
   $('view-title').textContent=titles[name]?.[0]||'Alchemic Media';
   $('view-subtitle').textContent=titles[name]?.[1]||'';
+
+  if(name==='settings') renderSettings();
 }
 
 function allCampaigns(){
@@ -1313,6 +1315,7 @@ function renderAll(){
   renderPresetLibrary();
   renderContent();
   renderAccounts();
+  renderSettings();
   renderLeadCounts();
 }
 
@@ -1339,15 +1342,17 @@ async function refreshMediaData(){
 
 async function load(){
   try{
-    const [dashboard,data,config,clips,content,campaigns,jobs,presets]=await Promise.all([
+    const tzOffsetMinutes=new Date().getTimezoneOffset();
+    const [dashboard,data,config,clips,content,campaigns,jobs,presets,settings]=await Promise.all([
       api('/api/dashboard'),
-      api('/api/data'),
+      api('/api/data?tzOffsetMinutes='+encodeURIComponent(tzOffsetMinutes)),
       api('/api/config'),
       api('/api/clips'),
       api('/api/content'),
       api('/api/campaigns'),
       api('/api/clipper/jobs'),
-      api('/api/clipper/presets')
+      api('/api/clipper/presets'),
+      api('/api/settings')
     ]);
 
     state.dashboard=dashboard;
@@ -1358,6 +1363,9 @@ async function load(){
     state.campaigns=campaigns;
     state.jobs=jobs;
     state.presets=presets;
+    state.settings=settings;
+    if(settings?.profile) state.auth.profile={...state.auth.profile,...settings.profile};
+    if(settings?.workspace) state.auth.workspace=settings.workspace;
 
     renderAll();
   }catch(error){
@@ -1405,6 +1413,20 @@ $('content-date-filter').addEventListener('change',renderContent);
 if($('connect-instagram')) $('connect-instagram').addEventListener('click',()=>startConnector('instagram'));
 if($('connect-facebook')) $('connect-facebook').addEventListener('click',()=>startConnector('facebook'));
 if($('connect-youtube')) $('connect-youtube').addEventListener('click',()=>startConnector('youtube'));
+
+if($('toggle-add-channel')) $('toggle-add-channel').addEventListener('click',()=>{
+  const panel=$('add-channel-panel');
+  const opening=panel.hidden;
+  panel.hidden=!panel.hidden;
+  $('toggle-add-channel').textContent=opening?'− Hide Add Channels':'+ Add Channels';
+  if(opening) panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+});
+
+if($('apply-all-daily-limit')) $('apply-all-daily-limit').addEventListener('click',applyDailyLimitToAll);
+
+if($('profile-settings-form')) $('profile-settings-form').addEventListener('submit',saveProfileSettings);
+if($('workspace-settings-form')) $('workspace-settings-form').addEventListener('submit',saveWorkspaceSettings);
+if($('password-settings-form')) $('password-settings-form').addEventListener('submit',savePasswordSettings);
 
 $('select-visible-clips').addEventListener('change',event=>{
   const visible=clipFilterRows().filter(x=>x.publishing_approved===false);
@@ -1479,6 +1501,8 @@ window.__alchemic={
   esc,
   fmt,
   platformLabel,
-  dateShort
+  dateShort,
+  loadSettings,
+  renderSettings
 };
 window.dispatchEvent(new Event('alchemic-ready'));
