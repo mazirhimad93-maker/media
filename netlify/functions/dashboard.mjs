@@ -1,9 +1,10 @@
-import { jsonResponse, outreachRequest, publicError, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, outreachRequest, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 const sum=(rows,key)=>(rows||[]).reduce((n,r)=>n+Number(r?.[key]||0),0);
 
-export default async () => {
+export default async (request) => {
   try {
+    await requireUser(request);
     const [posts,inbox,contacts,outbox,funnelLeads,emailReplies] = await Promise.all([
       supabaseRequest('v_social_post_performance?select=*&order=views.desc&limit=200').catch(()=>[]),
       supabaseRequest('v_social_inbox?select=conversation_id,platform,unread_count&limit=500').catch(()=>[]),
