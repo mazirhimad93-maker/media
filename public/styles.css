@@ -652,6 +652,11 @@ button{cursor:pointer}
 
 .inbox-ready-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .inbox-ready-actions .open-btn{padding:5px 8px;font-size:8px}
+.channel-action-message{min-height:18px;margin:-6px 0 14px;font-size:11px;color:#475569}
+.channel-action-message.error{color:#b91c1c}
+.channel-action-message.success{color:#047857}
+.remove-channel-btn{color:#b91c1c;border-color:#fecaca}
+.remove-channel-btn:hover{background:#fef2f2}
 
 
 /* WHOP-STYLE CONTENT ANALYTICS V4 */

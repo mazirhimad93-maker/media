@@ -76,7 +76,7 @@ export default async request=>{
 
     if(request.method==='GET'){
       const accounts=await supabaseRequest(scopedPath(
-        'content_accounts?select=id,platform,platform_account_id,username,display_name,scope,capabilities_json,webhook_status,token_expires_at,last_inbox_sync_at&order=created_at.desc',
+        'content_accounts?select=id,platform,platform_account_id,username,display_name,scope,capabilities_json,webhook_status,token_expires_at,last_inbox_sync_at,metadata&order=created_at.desc',
         workspaceId
       )).catch(()=>[]);
 
@@ -90,7 +90,7 @@ export default async request=>{
             process.env.META_APP_SECRET?.trim()
           )
         },
-        accounts:(accounts||[]).map(account=>{
+        accounts:(accounts||[]).filter(account=>!account.metadata?.disconnected_at).map(account=>{
           const p=permissionState(account);
           return {
             id:account.id,
@@ -121,11 +121,11 @@ export default async request=>{
 
     const rows=await supabaseRequest(scopedPath(
       'content_accounts?id=eq.'+encodeURIComponent(accountId)+
-      '&select=id,platform,platform_account_id,username,display_name,access_token,scope,capabilities_json,webhook_status&limit=1',
+      '&select=id,platform,platform_account_id,username,display_name,access_token,scope,capabilities_json,webhook_status,metadata&limit=1',
       workspaceId
     ));
     const account=rows?.[0];
-    if(!account) throw Object.assign(new Error('Channel not found'),{status:404});
+    if(!account||account.metadata?.disconnected_at) throw Object.assign(new Error('Channel not found'),{status:404});
     if(!['instagram_reels','facebook_page','facebook'].includes(account.platform)){
       throw Object.assign(new Error('This channel does not use the Meta inbox connector'),{status:400});
     }

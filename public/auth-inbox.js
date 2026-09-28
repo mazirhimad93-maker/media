@@ -285,7 +285,7 @@ function renderInboxChannelHealth(accounts) {
           <span>Last sync: ${media.esc(lastSync)}</span>
         </div>
         ${account.inbox_state === 'reconnect_required'
-          ? '<button class="text-btn inbox-reconnect" data-provider="' + (account.platform === 'instagram_reels' ? 'instagram' : 'facebook') + '" type="button">Reconnect in Channels</button>'
+          ? '<button class="text-btn inbox-reconnect" data-id="' + media.esc(account.id) + '" type="button">Reconnect DMs</button>'
           : ''}
       </div>
     `;
@@ -294,10 +294,7 @@ function renderInboxChannelHealth(accounts) {
   host.querySelectorAll('.inbox-reconnect').forEach((button) => {
     button.onclick = () => {
       media.setView('accounts');
-      setTimeout(() => {
-        const target = button.dataset.provider === 'instagram' ? $('connect-instagram') : $('connect-facebook');
-        if (target) target.scrollIntoView({ behavior:'smooth', block:'center' });
-      }, 50);
+      window.connectAlchemicChannel?.(button.dataset.id);
     };
   });
 }

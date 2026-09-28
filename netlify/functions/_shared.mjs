@@ -205,7 +205,7 @@ export async function upsertConnectedAccount(account, assignment = {}) {
     ...account,
     ...(workspaceId?{workspace_id:workspaceId}:{}),
     settings_json: { ...(existing.settings_json || {}), ...(account.settings_json || {}) },
-    metadata: { ...(existing.metadata || {}), ...(account.metadata || {}), connector_managed: true },
+    metadata: { ...(existing.metadata || {}), ...(account.metadata || {}), connector_managed: true, disconnected_at: null },
     capabilities_json: { ...(existing.capabilities_json || {}), ...(account.capabilities_json || {}) },
     updated_at: new Date().toISOString(),
   };
@@ -245,6 +245,26 @@ export async function upsertConnectedAccount(account, assignment = {}) {
     },
   }).catch(() => {});
   return { saved, campaign, pool };
+}
+
+export async function reconnectAccount(state, platform, platformAccountId = null) {
+  if (!state.reconnectAccountId) return null;
+  const rows = await supabaseRequest(scopedPath(
+    `content_accounts?id=eq.${encodeURIComponent(state.reconnectAccountId)}&select=id,platform,platform_account_id,username,status,is_active,daily_limit,weekly_limit,min_gap_minutes,metadata&limit=1`,
+    state.workspaceId
+  ));
+  const account = rows?.[0];
+  if (!account || account.platform !== platform || account.metadata?.disconnected_at) {
+    const error = new Error('The channel to reconnect is no longer available in this workspace.');
+    error.status = 404;
+    throw error;
+  }
+  if (platformAccountId !== null && String(account.platform_account_id) !== String(platformAccountId)) {
+    const error = new Error(`Meta returned a different account. Select @${account.username || 'the requested channel'} and try again.`);
+    error.status = 409;
+    throw error;
+  }
+  return account;
 }
 
 export const assignmentFromState = (state) => ({

@@ -15,6 +15,12 @@ export default async (request) => {
     );
     const c=rows?.[0];
     if(!c) throw Object.assign(new Error('Conversation not found'),{status:404});
+    const accounts=await supabaseRequest(scopedPath(
+      'content_accounts?id=eq.'+encodeURIComponent(c.account_id)+'&select=id,access_token,metadata&limit=1',workspaceId
+    ));
+    if(!accounts?.[0]?.access_token||accounts[0].metadata?.disconnected_at){
+      throw Object.assign(new Error('This channel is disconnected. Reconnect it before replying.'),{status:409});
+    }
 
     const created=await supabaseRequest('social_outbox',{
       method:'POST',

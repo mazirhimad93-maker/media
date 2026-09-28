@@ -41,6 +41,10 @@
   to = "/.netlify/functions/channel-settings"
   status = 200
 [[redirects]]
+  from = "/api/channels/remove"
+  to = "/.netlify/functions/channel-remove"
+  status = 200
+[[redirects]]
   from = "/api/channels/inbox/activate"
   to = "/.netlify/functions/inbox-activate"
   status = 200

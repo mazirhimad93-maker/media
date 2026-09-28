@@ -1041,14 +1041,18 @@ function populateConnectorOptions(){
   }
 }
 
-async function startConnector(provider){
+function channelActionMessage(message,tone=''){
+  const target=$('channel-action-message');
+  if(target){target.textContent=message;target.className='channel-action-message '+tone;}
+}
+
+async function startConnector(provider,reconnectAccountId=null){
   const config=state.config||{providers:{}};
   const ready=config.providers?.[provider]?.ready;
 
   if(!ready){
     const providerName=provider==='instagram'?'Instagram':provider==='facebook'?'Facebook':'YouTube';
-    $('connector-message').textContent=`${providerName} app credentials are not configured in this Netlify project yet.`;
-    $('connector-message').className='connector-message error';
+    channelActionMessage(`${providerName} app credentials are not configured in this Netlify project yet.`,'error');
     return;
   }
 
@@ -1058,7 +1062,8 @@ async function startConnector(provider){
     poolId:$('connector-pool')?.value||'',
     dailyLimit:$('connector-daily')?.value||'4',
     weeklyLimit:$('connector-weekly')?.value||'28',
-    minGapMinutes:$('connector-gap')?.value||'60'
+    minGapMinutes:$('connector-gap')?.value||'60',
+    ...(reconnectAccountId?{reconnectAccountId}:{})
   });
 
   const button=provider==='instagram'
@@ -1068,8 +1073,7 @@ async function startConnector(provider){
       : $('connect-youtube');
   if(button) button.disabled=true;
 
-  $('connector-message').textContent=`Opening ${provider==='instagram'?'Instagram':provider==='facebook'?'Facebook':'Google'} authorization…`;
-  $('connector-message').className='connector-message';
+  channelActionMessage(`Opening ${provider==='instagram'?'Instagram':provider==='facebook'?'Facebook':'Google'} authorization…`);
 
   try{
     const result=await api(`/api/oauth/start?${params.toString()}`,{
@@ -1079,8 +1083,7 @@ async function startConnector(provider){
     if(!result.authorizationUrl) throw new Error('OAuth URL was not returned');
     window.location.href=result.authorizationUrl;
   }catch(error){
-    $('connector-message').textContent=error.message;
-    $('connector-message').className='connector-message error';
+    channelActionMessage(error.message,'error');
     if(button) button.disabled=false;
   }
 }
@@ -1150,7 +1153,7 @@ function renderAccounts(){
         : account.inbox_state==='activate'
           ? `<button class="activate-inbox-btn open-btn" data-id="${esc(account.id)}" type="button">Activate inbox</button>`
           : account.inbox_state==='reconnect_required'
-            ? '<span class="status-chip status-running">Reconnect required</span>'
+            ? `<button class="reconnect-channel-btn open-btn" data-id="${esc(account.id)}" type="button">Reconnect DMs</button>`
             : '—';
 
       const analyticsCell=account.platform==='instagram_reels'
@@ -1186,10 +1189,11 @@ function renderAccounts(){
           <td>${inboxCell}</td>
           <td>${analyticsCell}</td>
           <td>${esc(account.webhook_status||'not configured')}</td>
+          <td><button class="remove-channel-btn open-btn" data-id="${esc(account.id)}" type="button">Remove</button></td>
         </tr>
       `;
     }).join('')
-    : '<tr><td class="empty-row" colspan="10">No channels yet. Click Add Channels to connect your first account.</td></tr>';
+    : '<tr><td class="empty-row" colspan="12">No channels yet. Click Add Channels to connect your first account.</td></tr>';
 
   document.querySelectorAll('.save-channel-limit').forEach(button=>{
     button.onclick=()=>saveChannelLimit(button.dataset.id);
@@ -1200,6 +1204,37 @@ function renderAccounts(){
   document.querySelectorAll('.sync-inbox-btn').forEach(button=>{
     button.onclick=()=>syncExistingInbox(button.dataset.id,button);
   });
+  document.querySelectorAll('.reconnect-channel-btn').forEach(button=>{
+    button.onclick=()=>reconnectChannel(button.dataset.id);
+  });
+  document.querySelectorAll('.remove-channel-btn').forEach(button=>{
+    button.onclick=()=>removeChannel(button.dataset.id,button);
+  });
+}
+
+function reconnectChannel(accountId){
+  const account=(state.data?.accounts||[]).find(a=>a.id===accountId);
+  if(!account){channelActionMessage('Channel not found. Refresh and try again.','error');return;}
+  const provider=account.platform==='instagram_reels'?'instagram':account.platform==='facebook_page'||account.platform==='facebook'?'facebook':null;
+  if(!provider){channelActionMessage('DM reconnect is only available for Instagram and Facebook Pages.','error');return;}
+  return startConnector(provider,accountId);
+}
+
+async function removeChannel(accountId,button){
+  const account=(state.data?.accounts||[]).find(a=>a.id===accountId);
+  if(!account) return;
+  if(!window.confirm(`Remove @${account.username||account.display_name||'this channel'} from Alchemic Media? Its publishing and DM connection will stop. Published posts and message history will be kept.`)) return;
+  button.disabled=true;
+  try{
+    await api('/api/channels/remove',{method:'POST',body:{accountId}});
+    channelActionMessage(`@${account.username||'Channel'} removed. Historical posts and conversations were kept.`,'success');
+    await refreshChannelData();
+    if(window.loadAlchemicInboxHealth) await window.loadAlchemicInboxHealth();
+  }catch(error){
+    channelActionMessage(error.message,'error');
+    await refreshChannelData().catch(()=>{});
+    button.disabled=false;
+  }
 }
 
 async function refreshChannelData(){
@@ -1216,18 +1251,12 @@ async function activateExistingInbox(accountId,button){
       method:'POST',
       body:{accountId}
     });
-    if($('connector-message')){
-      $('connector-message').textContent=result.state==='ready'
+    channelActionMessage(result.state==='ready'
         ? 'Inbox activated with the existing account token. No reconnect was needed.'
-        : 'Inbox activation needs attention.';
-      $('connector-message').className=result.state==='ready'?'connector-message success':'connector-message';
-    }
+        : 'Inbox activation needs attention.',result.state==='ready'?'success':'error');
     await refreshChannelData();
   }catch(error){
-    if($('connector-message')){
-      $('connector-message').textContent=error.message;
-      $('connector-message').className='connector-message error';
-    }
+    channelActionMessage(error.message,'error');
     if(button){button.disabled=false;button.textContent=original;}
   }
 }
@@ -1240,17 +1269,11 @@ async function syncExistingInbox(accountId,button){
       method:'POST',
       body:{accountId}
     });
-    if($('connector-message')){
-      $('connector-message').textContent=`Inbox synced: ${result.conversations||0} conversations, ${result.messages_inserted||0} new messages.`;
-      $('connector-message').className='connector-message success';
-    }
+    channelActionMessage(`Inbox synced: ${result.conversations||0} conversations, ${result.messages_inserted||0} new messages.`,'success');
     await refreshChannelData();
     if(window.loadAlchemicInbox) await window.loadAlchemicInbox();
   }catch(error){
-    if($('connector-message')){
-      $('connector-message').textContent=error.message;
-      $('connector-message').className='connector-message error';
-    }
+    channelActionMessage(error.message,'error');
   }finally{
     if(button){button.disabled=false;button.textContent=original;}
   }
@@ -1259,20 +1282,22 @@ async function syncExistingInbox(accountId,button){
 async function activateAllExistingInboxes(){
   const button=$('activate-all-inboxes');
   const accounts=(state.data?.accounts||[]).filter(account=>['instagram_reels','facebook_page','facebook'].includes(account.platform));
-  if(!accounts.length) return;
+  if(!accounts.length){channelActionMessage('Add an Instagram or Facebook Page channel first.');return;}
+
+  const reconnect=accounts.find(account=>account.inbox_state==='reconnect_required');
+  if(reconnect){
+    channelActionMessage(`Reconnecting @${reconnect.username||'account'} to grant DM access. Repeat for the remaining channels afterward.`);
+    await reconnectChannel(reconnect.id);
+    return;
+  }
 
   const original=button?.textContent||'Activate DMs';
   if(button){button.disabled=true;button.textContent='Activating…';}
 
-  let ready=0,reconnect=0,failed=0,messages=0;
+  let ready=0,failed=0,messages=0;
   try{
     for(const account of accounts){
       try{
-        if(account.inbox_state==='reconnect_required'){
-          reconnect++;
-          continue;
-        }
-
         if(account.inbox_state!=='ready'){
           await api('/api/channels/inbox/activate',{method:'POST',body:{accountId:account.id}});
         }
@@ -1288,17 +1313,15 @@ async function activateAllExistingInboxes(){
       }
     }
 
-    if($('connector-message')){
-      $('connector-message').textContent=
+    channelActionMessage(
         ready+' inbox'+(ready===1?'':'es')+' ready'+
         (messages?' · '+messages+' messages imported':'')+
-        (reconnect?' · '+reconnect+' account'+(reconnect===1?'':'s')+' need reconnect':'')+
-        (failed?' · '+failed+' failed':'');
-      $('connector-message').className=(failed||reconnect)?'connector-message':'connector-message success';
-    }
+        (failed?' · '+failed+' failed':''),failed?'error':'success');
 
     await refreshChannelData();
     if(window.loadAlchemicInbox) await window.loadAlchemicInbox();
+  }catch(error){
+    channelActionMessage(error.message,'error');
   }finally{
     if(button){button.disabled=false;button.textContent=original;}
   }
@@ -1634,6 +1657,7 @@ window.__alchemic={
   loadSettings,
   renderSettings
 };
+window.connectAlchemicChannel=reconnectChannel;
 window.dispatchEvent(new Event('alchemic-ready'));
 
 $('activate-all-inboxes')?.addEventListener('click',activateAllExistingInboxes);
