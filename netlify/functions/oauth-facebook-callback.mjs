@@ -1,4 +1,4 @@
-import { assignmentFromState, callbacks, htmlResponse, successPage, upsertConnectedAccount, verifyOAuthState } from './_shared.mjs';
+import { assignmentFromState, callbacks, htmlResponse, reconnectAccount, successPage, upsertConnectedAccount, verifyOAuthState } from './_shared.mjs';
 
 const failPage = (message) => htmlResponse(successPage({ title:'Facebook connection failed', message }), 400);
 const graphVersion = () => process.env.FACEBOOK_API_VERSION?.trim() || 'v26.0';
@@ -70,8 +70,13 @@ export default async (request) => {
     const shortToken = await exchangeCode(request, code);
     const longToken = await exchangeLongLived(shortToken);
     const pages = await managedPages(longToken.access_token);
+    const existing = await reconnectAccount(state, 'facebook_page');
+    if (existing && !pages.some((page) => String(page.id) === String(existing.platform_account_id))) {
+      return failPage(`Meta did not grant access to ${existing.username || 'the selected Page'}. Select that Page in the authorization flow and try again.`);
+    }
 
     const eligible = pages.filter((page) => {
+      if (existing && String(page.id) !== String(existing.platform_account_id)) return false;
       const tasks = Array.isArray(page.tasks) ? page.tasks : [];
       return page.access_token && (!tasks.length || tasks.includes('MESSAGING') || tasks.includes('MESSAGE') || tasks.includes('MODERATE'));
     });
@@ -93,8 +98,8 @@ export default async (request) => {
           platform_account_id:String(page.id),
           username:page.name || String(page.id),
           display_name:page.name || String(page.id),
-          status:'active',
-          is_active:true,
+          status:existing?.status || 'active',
+          is_active:existing?.is_active ?? true,
           health_status:'healthy',
           access_token:page.access_token,
           refresh_token:null,

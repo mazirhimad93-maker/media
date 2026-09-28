@@ -1,4 +1,4 @@
-import { callbacks, clampInt, jsonResponse, providerConfig, publicError, requireWorkspace, signOAuthState } from './_shared.mjs';
+import { callbacks, clampInt, jsonResponse, providerConfig, publicError, reconnectAccount, requireWorkspace, signOAuthState } from './_shared.mjs';
 
 export default async (request) => {
   try {
@@ -7,13 +7,19 @@ export default async (request) => {
     const provider = url.searchParams.get('provider');
     if (!['youtube','instagram','facebook'].includes(provider)) throw Object.assign(new Error('Unsupported OAuth provider'), { status: 400 });
     if (!providerConfig()[provider].ready) throw Object.assign(new Error(`${provider} app credentials are not configured`), { status: 409 });
+    const reconnectAccountId = url.searchParams.get('reconnectAccountId') || null;
+    if (reconnectAccountId && provider === 'youtube') throw Object.assign(new Error('YouTube reconnect is not available here'), { status: 400 });
+    const existing = reconnectAccountId ? await reconnectAccount(
+      { reconnectAccountId, workspaceId }, provider === 'instagram' ? 'instagram_reels' : 'facebook_page'
+    ) : null;
     const state = signOAuthState({
       provider,
-      campaignId: url.searchParams.get('campaignId') || null,
-      poolId: url.searchParams.get('poolId') || null,
-      dailyLimit: clampInt(url.searchParams.get('dailyLimit'), 0, 1000, 4),
-      weeklyLimit: clampInt(url.searchParams.get('weeklyLimit'), 0, 7000, 28),
-      minGapMinutes: clampInt(url.searchParams.get('minGapMinutes'), 0, 10080, 60),
+      reconnectAccountId,
+      campaignId: existing ? null : url.searchParams.get('campaignId') || null,
+      poolId: existing ? null : url.searchParams.get('poolId') || null,
+      dailyLimit: existing ? existing.daily_limit : clampInt(url.searchParams.get('dailyLimit'), 0, 1000, 4),
+      weeklyLimit: existing ? existing.weekly_limit : clampInt(url.searchParams.get('weeklyLimit'), 0, 7000, 28),
+      minGapMinutes: existing ? existing.min_gap_minutes : clampInt(url.searchParams.get('minGapMinutes'), 0, 10080, 60),
       connectedByUserId: user.id,
       workspaceId,
     });

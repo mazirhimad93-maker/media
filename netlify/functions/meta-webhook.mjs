@@ -5,9 +5,9 @@ const textResponse=(body,status=200)=>new Response(String(body),{status,headers:
 async function accountFor(platformId){
   const rows=await supabaseRequest(
     'content_accounts?platform_account_id=eq.'+encodeURIComponent(platformId)+
-    '&platform=in.(instagram_reels,facebook_page)&select=id,platform,platform_account_id,username,workspace_id&limit=1'
+    '&platform=in.(instagram_reels,facebook_page)&select=id,platform,platform_account_id,username,workspace_id,metadata&limit=1'
   );
-  return rows?.[0]||null;
+  return rows?.[0]?.metadata?.disconnected_at ? null : rows?.[0]||null;
 }
 
 async function upsertContact({account,platformUserId,username=null,displayName=null,metadata={}}){

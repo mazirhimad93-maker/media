@@ -13,7 +13,7 @@ export default async (request) => {
     const offsetMinutes=Math.max(-840,Math.min(840,Number(url.searchParams.get('tzOffsetMinutes')||0)));
 
     const accountsPromise = supabaseRequest(
-      scopedPath('content_accounts?select=id,platform,platform_account_id,username,display_name,status,is_active,health_status,daily_limit,weekly_limit,min_gap_minutes,last_used_at,token_expires_at,scope,capabilities_json,webhook_status,last_inbox_sync_at&order=created_at.desc',workspaceId)
+      scopedPath('content_accounts?select=id,platform,platform_account_id,username,display_name,status,is_active,health_status,daily_limit,weekly_limit,min_gap_minutes,last_used_at,token_expires_at,scope,capabilities_json,webhook_status,last_inbox_sync_at,metadata&order=created_at.desc',workspaceId)
     ).catch(async () => {
       const legacy=await supabaseRequest(
         scopedPath('content_accounts?select=id,platform,platform_account_id,username,status,is_active,health_status,daily_limit,weekly_limit,min_gap_minutes,last_used_at,token_expires_at&order=created_at.desc',workspaceId)
@@ -49,7 +49,7 @@ export default async (request) => {
     const campaignByPool=new Map((campaigns||[]).filter(c=>c.distribution_pool_id).map(c=>[c.distribution_pool_id,c]));
     const memberByAccount=new Map((memberships||[]).map(m=>[m.account_id,m]));
 
-    const safeAccounts=(accounts||[]).map(account=>{
+    const safeAccounts=(accounts||[]).filter(account=>!account.metadata?.disconnected_at).map(account=>{
       const member=memberByAccount.get(account.id);
       const pool=member?poolById.get(member.pool_id):null;
       const campaign=pool?campaignByPool.get(pool.id):null;
