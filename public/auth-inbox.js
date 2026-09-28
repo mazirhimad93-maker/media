@@ -308,7 +308,17 @@ async function loadInboxHealth() {
     const result = await media.api('/api/channels/inbox/activate');
     const accounts = result.accounts || [];
     media.state.inbox.accounts = accounts;
+    media.state.inbox.webhook = result.webhook || null;
     renderInboxChannelHealth(accounts);
+
+    const webhookUrl = $('inbox-webhook-url');
+    if (webhookUrl) {
+      webhookUrl.textContent = result.webhook?.callback_url || 'Webhook URL unavailable';
+      webhookUrl.title = [
+        result.webhook?.verify_token_configured ? 'Verify token configured' : 'Verify token missing in Netlify',
+        result.webhook?.app_secret_configured ? 'App secret configured' : 'App secret missing in Netlify'
+      ].join(' · ');
+    }
     return accounts;
   } catch (error) {
     const host = $('inbox-channel-status');
