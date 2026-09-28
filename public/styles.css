@@ -649,3 +649,6 @@ button{cursor:pointer}
   .published-post-embed{min-height:480px}
   .published-social-frame{height:520px}
 }
+
+.inbox-ready-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.inbox-ready-actions .open-btn{padding:5px 8px;font-size:8px}
