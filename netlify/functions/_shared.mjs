@@ -502,7 +502,7 @@ export async function ensureWorkspaceForProfile(user, profile) {
 
     await supabaseRequest(
       `app_users?user_id=eq.${encodeURIComponent(user.id)}`,
-      {method:'PATCH',body:{default_workspace_id:workspace.id,updated_at:new Date().toISOString()}}
+      {method:'PATCH',body:{default_workspace_id:workspace.id,role:'owner',updated_at:new Date().toISOString()}}
     );
 
     return {
@@ -527,6 +527,19 @@ export async function workspaceForUserId(userId) {
 export async function requireWorkspace(request, allowedRoles = null) {
   const auth = await requireUser(request, allowedRoles);
   const context = await ensureWorkspaceForProfile(auth.user, auth.profile);
+
+  if (!context.workspace) {
+    const workspaceTablesExist = await supabaseRequest('media_workspaces?select=id&limit=1')
+      .then(() => true)
+      .catch(() => false);
+
+    if (workspaceTablesExist) {
+      const error = new Error('Your Media workspace could not be resolved. Sign out and sign in again.');
+      error.status = 409;
+      throw error;
+    }
+  }
+
   return {
     ...auth,
     workspace: context.workspace,
