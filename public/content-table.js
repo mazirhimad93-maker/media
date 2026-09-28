@@ -72,7 +72,9 @@ function cell(r,k){
   if(k==='engagement_rate') return Number(r.engagement_rate||0).toFixed(2)+'%';
   if(k==='published_at') return dateShort(r.finished_at||r.created_at);
   if(k==='metrics_updated') return r.metrics_captured_at?dateShort(r.metrics_captured_at):'Not synced';
-  if(k==='clip') return r.source_url?`<button class="open-btn content-preview" data-url="${esc(r.source_url)}" data-title="${esc(r.title||'Clip')}">Preview</button>`:'—';
+  if(k==='clip') return (r.external_post_url||r.external_post_id)
+    ? `<button class="open-btn content-preview" data-queue="${esc(r.queue_id)}" type="button">Preview</button>`
+    : '—';
   if(k==='result_url') return r.external_post_url?`<a class="post-url" href="${esc(r.external_post_url)}" target="_blank" rel="noopener">Open post ↗</a>`:(r.external_post_id?esc(r.external_post_id):'—');
   if(k==='error') return r.error?`<span class="content-error">${esc(r.error)}</span>`:'—';
   return '—';
@@ -129,7 +131,12 @@ function render(){
   ].map(x=>`<div class="stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${typeof x[1]==='string'?esc(x[1]):fmt(x[1])}</strong><span>${x[0]}</span></div></div>`).join('');
   const cols=visible(); $('content-table-meta').textContent=`${rows.length} rows · ${cols.length} visible columns · drag headers to reorder`;
   $('content-table').innerHTML=rows.length?rows.map(r=>'<tr>'+cols.map(x=>`<td data-column="${x.key}" style="width:${x.width}px;min-width:${x.width}px;max-width:${x.width}px">${cell(r,x.key)}</td>`).join('')+'</tr>').join(''):`<tr><td class="empty-row" colspan="${Math.max(1,cols.length)}">No content matches the current filters.</td></tr>`;
-  document.querySelectorAll('.content-preview').forEach(b=>b.onclick=()=>window.open(b.dataset.url,'_blank','noopener'));
+  document.querySelectorAll('.content-preview').forEach(button=>{
+    button.onclick=()=>{
+      const row=(state.content?.rows||[]).find(x=>String(x.queue_id)===String(button.dataset.queue));
+      if(row) window.dispatchEvent(new CustomEvent('alchemic-open-published-post',{detail:{row}}));
+    };
+  });
   applyWidths();
   window.dispatchEvent(new CustomEvent('alchemic-content-rendered',{detail:{rows}}));
 }
