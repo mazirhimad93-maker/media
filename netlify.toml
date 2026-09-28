@@ -30,6 +30,14 @@
   status = 200
 
 [[redirects]]
+  from = "/api/settings"
+  to = "/.netlify/functions/settings"
+  status = 200
+[[redirects]]
+  from = "/api/channels/settings"
+  to = "/.netlify/functions/channel-settings"
+  status = 200
+[[redirects]]
   from = "/api/config"
   to = "/.netlify/functions/config"
   status = 200
