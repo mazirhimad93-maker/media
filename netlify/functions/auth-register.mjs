@@ -1,4 +1,4 @@
-import { authSignup, ensureAppUser, jsonResponse, publicError, refreshCookie, registrationCodeMatches } from './_shared.mjs';
+import { authSignup, ensureAppUser, jsonResponse, publicError, refreshCookie, registrationCodeMatches, supabaseRequest } from './_shared.mjs';
 
 export default async (request) => {
   try {
@@ -15,6 +15,18 @@ export default async (request) => {
     }
     if (!email || !password) return jsonResponse({ error: 'Email and password are required' }, 400);
     if (password.length < 8) return jsonResponse({ error: 'Password must be at least 8 characters' }, 400);
+
+    const existingProfile = await supabaseRequest(
+      `app_users?email=eq.${encodeURIComponent(email)}&select=user_id,email,full_name,role,status&limit=1`
+    ).catch(() => []);
+
+    if (existingProfile?.[0]) {
+      return jsonResponse({
+        error: 'This email is already registered. Sign in instead.',
+        code: 'EMAIL_ALREADY_REGISTERED',
+        email,
+      }, 409);
+    }
 
     const result = await authSignup(email, password, { full_name: fullName || null });
     const user = result?.user || (result?.id ? result : null);
