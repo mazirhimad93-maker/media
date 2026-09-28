@@ -1,9 +1,10 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 const safe = async (path) => supabaseRequest(path).catch(() => []);
 
-export default async () => {
+export default async (request) => {
   try {
+    await requireUser(request);
     const [variants,assets,queue,campaigns,accounts] = await Promise.all([
       safe('clip_variants?select=*&order=created_at.desc&limit=1000'),
       safe('content_assets?select=*&order=created_at.desc&limit=1000'),
