@@ -732,7 +732,8 @@ function renderPresetLibrary(){
         <span class="mini-chip">v${Number(p.current_version||1)}</span>
         <span class="mini-chip">${esc(p.renderer_contract_version||'13.6')}</span>
         ${p.is_system?'<span class="mini-chip">system</span>':''}
-        ${p.preview_url?`<a class="open-btn" href="${esc(p.preview_url)}" target="_blank" rel="noopener">Preview ↗</a>`:''}
+        <button class="open-btn preset-design-preview" type="button" data-slug="${esc(p.slug)}">View design</button>
+        ${p.preview_url?`<a class="open-btn" href="${esc(p.preview_url)}" target="_blank" rel="noopener">Rendered sample ↗</a>`:''}
       </div>
     </article>
   `).join(''):'<div class="empty-row">No presets found. Make sure the Clipper preset registry migration has been installed.</div>';
@@ -751,6 +752,7 @@ function openPresets(){
   renderPresetLibrary();
   $('preset-message').textContent='';
   $('presets-modal').hidden=false;
+  requestAnimationFrame(()=>window.__alchemicPresetPreview?.open?.());
 }
 function closePresets(){ $('presets-modal').hidden=true; }
 
@@ -835,6 +837,7 @@ async function submitPreset(event){
     populatePresetOptions();
     renderPresetLibrary();
     $('create-preset-form').reset();
+    window.__alchemicPresetPreview?.reset?.();
     $('preset-message').textContent=`Saved ${result.preset?.name||'preset'}.`;
     $('preset-message').className='connector-message success';
   }catch(error){
