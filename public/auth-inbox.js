@@ -49,6 +49,7 @@ function updateUserUi() {
 }
 
 function showAuth(message) {
+  cancelRecording();
   media.state.auth = { accessToken: null, user: null, profile: null, workspace: null };
   $('app-shell').hidden = true;
   $('auth-shell').hidden = false;
@@ -176,6 +177,7 @@ async function register(event) {
 }
 
 async function logout() {
+  cancelRecording();
   try {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
   } catch {}
@@ -495,6 +497,7 @@ async function openInboxThread(row) {
   const switching = String(media.state.inbox.selected?.id) !== String(row.id);
   media.state.inbox.selected = row;
   if (switching) {
+    cancelRecording();
     media.state.inbox.conversation = null;
     conversationSignature = '';
     localReplies = [];
@@ -589,7 +592,7 @@ async function sendReply(event) {
       local.media_url = uploaded.url;
       local.message_type = uploaded.type;
       local.status = 'sending';
-      renderConversation(true);
+      if (media.state.inbox.selected?.id === selected.id) renderConversation(true);
     }
     button.textContent = 'Sending…';
     const result = await media.api('/api/social/reply', {
@@ -599,16 +602,16 @@ async function sendReply(event) {
     local.outboxId = result.outbox?.id;
     local.status = result.delivery?.status || (result.sent ? 'sent' : 'pending');
     local.last_error = result.delivery?.error || '';
-    renderConversation(true);
+    if (media.state.inbox.selected?.id === selected.id) renderConversation(true);
     if (attachment && media.state.inbox.selected?.id === selected.id && pendingAttachment === attachment) clearAttachment();
-    if (local.last_error) $('composer-error').textContent = local.last_error;
+    if (local.last_error && media.state.inbox.selected?.id === selected.id) $('composer-error').textContent = local.last_error;
     await refreshConversation();
     loadInbox();
   } catch (error) {
     localReplies = localReplies.filter((item) => item !== local);
-    renderConversation();
+    if (media.state.inbox.selected?.id === selected.id) renderConversation();
     if (!attachment && media.state.inbox.selected?.id === selected.id) $('conversation-reply-body').value = body;
-    $('composer-error').textContent = error.message;
+    if (media.state.inbox.selected?.id === selected.id) $('composer-error').textContent = error.message;
   } finally {
     button.disabled = false;
     button.textContent = 'Send';
@@ -657,7 +660,11 @@ async function toggleRecording() {
       const chunks = [];
       recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
       recorder.start();
-      recordingSession = { stop: () => new Promise((resolve) => {
+      recordingSession = { cancel: () => {
+        recorder.onstop = null;
+        if (recorder.state === 'recording') recorder.stop();
+        stream.getTracks().forEach((track) => track.stop());
+      }, stop: () => new Promise((resolve) => {
         recorder.onstop = () => {
           stream.getTracks().forEach((track) => track.stop());
           stageAttachment(new File(chunks, 'Voice message.m4a', { type: 'audio/mp4' }));
@@ -680,7 +687,11 @@ async function toggleRecording() {
       };
       source.connect(processor);
       processor.connect(context.destination);
-      recordingSession = { stop: async () => {
+      recordingSession = { cancel: () => {
+        processor.disconnect(); source.disconnect();
+        stream.getTracks().forEach((track) => track.stop());
+        context.close();
+      }, stop: async () => {
         processor.disconnect(); source.disconnect();
         stream.getTracks().forEach((track) => track.stop());
         await context.close();
@@ -707,6 +718,15 @@ async function toggleRecording() {
   } catch (error) {
     $('composer-error').textContent = error.message || 'Microphone permission was denied.';
   }
+}
+
+function cancelRecording() {
+  if (!recordingSession) return;
+  recordingSession.cancel();
+  recordingSession = null;
+  clearTimeout(recordingTimer);
+  const button = $('composer-record-button');
+  if (button) { button.textContent = '🎙'; button.classList.remove('recording'); }
 }
 
 const emojis = ['😀', '😊', '😂', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🙏', '👋', '😍', '💯', '🤝', '💬', '✅'];
