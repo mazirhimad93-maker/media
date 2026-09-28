@@ -29,7 +29,7 @@ export default async (request) => {
         platform:'youtube_shorts', platform_account_id:channel.id, username:channel.snippet?.customUrl || channel.snippet?.title || channel.id,
         display_name:channel.snippet?.title || channel.id, status:'active', is_active:true, health_status:'healthy', access_token:token.access_token,
         refresh_token:refreshToken, token_type:token.token_type || 'Bearer', token_expires_at:expiresAt,
-        scope:token.scope || 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+        scope:token.scope || 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly',
         daily_limit:state.dailyLimit, weekly_limit:state.weeklyLimit, min_gap_minutes:state.minGapMinutes,
         error_message:null, capabilities_json:{publish:true,analytics:true,comments_read:true},
         settings_json:{google_client_id:process.env.GOOGLE_CLIENT_ID.trim(), youtube_privacy_status:'public', youtube_category_id:'22', youtube_notify_subscribers:true},
