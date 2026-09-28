@@ -3,7 +3,9 @@ import { jsonResponse, supabaseRequest, verifyMetaSignature } from './_shared.mj
 const textResponse=(body,status=200)=>new Response(String(body),{status,headers:{'content-type':'text/plain; charset=utf-8'}});
 
 async function accountFor(platformId){
-  const rows=await supabaseRequest(`content_accounts?platform=eq.instagram_reels&platform_account_id=eq.${encodeURIComponent(platformId)}&select=id,platform,platform_account_id,username&limit=1`);
+  const rows=await supabaseRequest(
+    `content_accounts?platform_account_id=eq.${encodeURIComponent(platformId)}&platform=in.(instagram_reels,facebook_page)&select=id,platform,platform_account_id,username&limit=1`
+  );
   return rows?.[0]||null;
 }
 
@@ -77,12 +79,16 @@ export default async (request)=>{
     for(const entry of payload.entry||[]){
       for(const event of entry.messaging||[]){
         const key=event.message?.mid||event.postback?.mid||`${entry.id}:${event.timestamp||Date.now()}`;
-        await supabaseRequest('social_webhook_events',{method:'POST',body:{provider:'instagram',event_key:key,account_platform_id:String(entry.id||''),event_type:'messaging',payload:event,status:'received'}}).catch(()=>{});
+        const account=await accountFor(String(entry.id||event.recipient?.id||'')).catch(()=>null);
+        const provider=account?.platform==='facebook_page'?'facebook':'instagram';
+        await supabaseRequest('social_webhook_events',{method:'POST',body:{provider,event_key:key,account_platform_id:String(entry.id||''),event_type:'messaging',payload:event,status:'received'}}).catch(()=>{});
         results.push(await processMessaging(entry,event));
       }
       for(const change of entry.changes||[]){
         const value=change.value||{}; const key=value.id||value.comment_id||`${entry.id}:${change.field}:${value.created_time||Date.now()}`;
-        await supabaseRequest('social_webhook_events',{method:'POST',body:{provider:'instagram',event_key:key,account_platform_id:String(entry.id||''),event_type:change.field||'change',payload:change,status:'received'}}).catch(()=>{});
+        const account=await accountFor(String(entry.id||'')).catch(()=>null);
+        const provider=account?.platform==='facebook_page'?'facebook':'instagram';
+        await supabaseRequest('social_webhook_events',{method:'POST',body:{provider,event_key:key,account_platform_id:String(entry.id||''),event_type:change.field||'change',payload:change,status:'received'}}).catch(()=>{});
         if(change.field==='comments'||change.field==='comment') results.push(await processComment(entry,change)); else results.push({ignored:change.field||'change'});
       }
     }
