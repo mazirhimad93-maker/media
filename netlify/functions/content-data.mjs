@@ -1,17 +1,17 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const safe=async path=>supabaseRequest(path).catch(()=>[]);
 
 export default async (request) => {
   try {
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     const [queue,assets,accounts,history,metrics,campaigns] = await Promise.all([
-      safe('content_publish_queue?select=*&order=created_at.desc&limit=5000'),
-      safe('content_assets?select=*&order=created_at.desc&limit=2000'),
-      safe('content_accounts?select=id,platform,username,display_name,platform_account_id&limit=1000'),
-      safe('content_history?select=*&order=created_at.desc&limit=7000'),
-      safe('post_metrics_snapshots?select=*&order=captured_at.desc&limit=10000'),
-      safe('content_campaigns?select=id,name,status&limit=500')
+      safe(scopedPath('content_publish_queue?select=*&order=created_at.desc&limit=5000',workspaceId)),
+      safe(scopedPath('content_assets?select=*&order=created_at.desc&limit=2000',workspaceId)),
+      safe(scopedPath('content_accounts?select=id,platform,username,display_name,platform_account_id&limit=1000',workspaceId)),
+      safe(scopedPath('content_history?select=*&order=created_at.desc&limit=7000',workspaceId)),
+      safe(scopedPath('post_metrics_snapshots?select=*&order=captured_at.desc&limit=10000',workspaceId)),
+      safe(scopedPath('content_campaigns?select=id,name,status&limit=500',workspaceId))
     ]);
 
     const assetById=new Map((assets||[]).map(x=>[x.id,x]));
