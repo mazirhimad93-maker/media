@@ -2,10 +2,11 @@ import { scopedPath, supabaseRequest } from './_shared.mjs';
 
 const nowIso=()=>new Date().toISOString();
 const num=v=>Math.max(0,Number(v||0));
+const ymd=value=>new Date(value).toISOString().slice(0,10);
 
 async function refreshYouTube(account){
-  if(account.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
-  if(!account.refresh_token) throw new Error('YouTube refresh token missing');
+  if(account?.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
+  if(!account?.refresh_token) throw new Error('YouTube refresh token missing');
 
   const clientId=process.env.GOOGLE_CLIENT_ID?.trim() || account.settings_json?.google_client_id;
   const clientSecret=process.env.GOOGLE_CLIENT_SECRET?.trim() || account.settings_json?.google_client_secret;
@@ -28,28 +29,126 @@ async function refreshYouTube(account){
   await supabaseRequest('content_accounts?id=eq.'+encodeURIComponent(account.id),{
     method:'PATCH',
     body:{access_token:data.access_token,token_expires_at:expiresAt,health_status:'healthy',updated_at:nowIso()}
-  });
+  }).catch(()=>{});
+
   account.access_token=data.access_token;
   account.token_expires_at=expiresAt;
   return data.access_token;
 }
 
-async function youtubeMetrics(post,account){
-  const token=await refreshYouTube(account);
+async function youtubePublicCredential(accounts){
+  const apiKey=process.env.YOUTUBE_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim() || '';
+  if(apiKey) return {type:'key',value:apiKey};
+
+  const candidates=(accounts||[]).filter(a=>a.platform==='youtube_shorts'&&(a.refresh_token||a.access_token));
+  let lastError=null;
+
+  for(const account of candidates){
+    try{
+      const token=await refreshYouTube(account);
+      if(token) return {type:'oauth',value:token,account_id:account.id};
+    }catch(error){
+      lastError=error;
+    }
+  }
+
+  throw new Error(
+    'No usable YouTube read credential. Reconnect one YouTube channel or add YOUTUBE_API_KEY in Netlify'+
+    (lastError?.message?': '+lastError.message:'')
+  );
+}
+
+async function youtubeBatchStatistics(videoIds,credential){
   const url=new URL('https://www.googleapis.com/youtube/v3/videos');
-  url.search=new URLSearchParams({part:'statistics',id:post.external_post_id});
-  const response=await fetch(url,{headers:{authorization:'Bearer '+token}});
+  url.searchParams.set('part','statistics');
+  url.searchParams.set('id',videoIds.join(','));
+
+  const headers={};
+  if(credential.type==='key') url.searchParams.set('key',credential.value);
+  else headers.authorization='Bearer '+credential.value;
+
+  const response=await fetch(url,{headers});
   const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(data.error?.message||'YouTube metrics failed');
-  const s=data.items?.[0]?.statistics||{};
-  return {
-    views:num(s.viewCount),
-    likes:num(s.likeCount),
-    comments:num(s.commentCount),
-    shares:0,
-    saves:0,
-    raw_json:data
-  };
+  if(!response.ok) throw new Error(data.error?.message||'YouTube statistics failed');
+
+  return new Map((data.items||[]).map(v=>[
+    String(v.id),
+    {
+      views:num(v.statistics?.viewCount),
+      likes:num(v.statistics?.likeCount),
+      comments:num(v.statistics?.commentCount),
+      shares:0,
+      saves:0,
+      raw_json:{item_id:v.id,statistics:v.statistics||{}}
+    }
+  ]));
+}
+
+async function youtubeDailyAnalytics(items,workspaceId){
+  if(!items?.length) return {rows:[],status:'empty'};
+
+  const account=items[0].account;
+  const scope=String(account.scope||'');
+  if(!scope.includes('yt-analytics.readonly')){
+    return {rows:[],status:'needs_reconnect',account_id:account.id};
+  }
+
+  const token=await refreshYouTube(account);
+  const dates=items.map(x=>new Date(x.post.finished_at||x.post.created_at||Date.now()).getTime()).filter(Number.isFinite);
+  const startDate=ymd(new Date(Math.min(...dates,Date.now())));
+  const endDate=ymd(new Date());
+
+  const rows=[];
+  for(let i=0;i<items.length;i+=100){
+    const batch=items.slice(i,i+100);
+    const byVideo=new Map(batch.map(x=>[String(x.post.external_post_id),x]));
+
+    const url=new URL('https://youtubeanalytics.googleapis.com/v2/reports');
+    url.search=new URLSearchParams({
+      ids:'channel==MINE',
+      startDate,
+      endDate,
+      metrics:'views,estimatedMinutesWatched,averageViewDuration',
+      dimensions:'day,video',
+      filters:'video=='+batch.map(x=>x.post.external_post_id).join(','),
+      sort:'day'
+    });
+
+    const response=await fetch(url,{headers:{authorization:'Bearer '+token}});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){
+      const msg=data.error?.message||'YouTube Analytics daily metrics failed';
+      if(/insufficient|scope|permission/i.test(msg)) return {rows:[],status:'needs_reconnect',account_id:account.id,error:msg};
+      throw new Error(msg);
+    }
+
+    const names=(data.columnHeaders||[]).map(x=>x.name);
+    const index=Object.fromEntries(names.map((name,idx)=>[name,idx]));
+
+    for(const raw of data.rows||[]){
+      const videoId=String(raw[index.video]||'');
+      const item=byVideo.get(videoId);
+      if(!item) continue;
+      rows.push({
+        workspace_id:workspaceId||null,
+        history_id:item.h.id,
+        metric_date:String(raw[index.day]),
+        source:'youtube_analytics',
+        platform:'youtube_shorts',
+        views:num(raw[index.views]),
+        likes:0,
+        comments:0,
+        shares:0,
+        saves:0,
+        watch_time_minutes:num(raw[index.estimatedMinutesWatched]),
+        average_view_duration_seconds:num(raw[index.averageViewDuration]),
+        raw_json:{headers:data.columnHeaders||[],row:raw},
+        updated_at:nowIso()
+      });
+    }
+  }
+
+  return {rows,status:'ok',account_id:account.id};
 }
 
 async function instagramMetrics(post,account){
@@ -76,8 +175,6 @@ async function instagramMetrics(post,account){
     raw_json:{basic,insights:{}}
   };
 
-  // Meta can expose different Reel metrics depending on account type/API version.
-  // Try the common metrics independently so one unavailable metric never blocks the rest.
   for(const metric of ['views','plays','saved','shares']){
     try{
       const u=new URL(base+'/insights');
@@ -144,7 +241,6 @@ function refreshAfterMinutes(post){
 }
 
 async function metricsFor(post,account){
-  if(account.platform==='youtube_shorts') return youtubeMetrics(post,account);
   if(account.platform==='instagram_reels') return instagramMetrics(post,account);
   if(account.platform==='facebook_page'||account.platform==='facebook') return facebookMetrics(post,account);
   throw Object.assign(new Error('Metrics not supported for '+account.platform),{unsupported:true});
@@ -164,7 +260,7 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
       workspaceId
     )).catch(()=>[]),
     supabaseRequest(scopedPath(
-      'content_accounts?select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,settings_json&limit=3000',
+      'content_accounts?select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,scope,settings_json&limit=3000',
       workspaceId
     )).catch(()=>[]),
     supabaseRequest(scopedPath(
@@ -241,66 +337,47 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     });
   };
 
-  // YouTube supports up to 50 video IDs in one statistics request. Batch by
-  // publishing account so hundreds of Shorts do not become hundreds of API calls.
-  const youtubeGroups=new Map();
-  const other=[];
-  for(const item of due){
-    if(item.account.platform==='youtube_shorts'){
-      const list=youtubeGroups.get(item.account.id)||[];
-      list.push(item);
-      youtubeGroups.set(item.account.id,list);
-    }else{
-      other.push(item);
-    }
-  }
+  const youtube=due.filter(x=>x.account.platform==='youtube_shorts');
+  const other=due.filter(x=>x.account.platform!=='youtube_shorts');
 
-  for(const group of youtubeGroups.values()){
-    const account=group[0].account;
+  if(youtube.length){
     try{
-      const token=await refreshYouTube(account);
-      for(let i=0;i<group.length;i+=50){
-        const batch=group.slice(i,i+50);
-        const url=new URL('https://www.googleapis.com/youtube/v3/videos');
-        url.search=new URLSearchParams({
-          part:'statistics',
-          id:batch.map(x=>x.post.external_post_id).join(',')
-        });
-        const response=await fetch(url,{headers:{authorization:'Bearer '+token}});
-        const data=await response.json().catch(()=>({}));
-        if(!response.ok) throw new Error(data.error?.message||'YouTube metrics failed');
-
-        const byId=new Map((data.items||[]).map(v=>[String(v.id),v.statistics||{}]));
+      const credential=await youtubePublicCredential(accounts);
+      for(let i=0;i<youtube.length;i+=50){
+        const batch=youtube.slice(i,i+50);
+        const stats=await youtubeBatchStatistics(batch.map(x=>x.post.external_post_id),credential);
         for(const item of batch){
-          const s=byId.get(String(item.post.external_post_id));
-          if(!s){
-            results.push({history_id:item.h.id,queue_id:item.post.id,platform:account.platform,status:'failed',error:'YouTube video statistics were not returned'});
+          const m=stats.get(String(item.post.external_post_id));
+          if(!m){
+            results.push({
+              history_id:item.h.id,
+              queue_id:item.post.id,
+              platform:item.account.platform,
+              status:'failed',
+              error:'YouTube did not return statistics for this video'
+            });
             continue;
           }
-          success(item,{
-            views:num(s.viewCount),
-            likes:num(s.likeCount),
-            comments:num(s.commentCount),
-            shares:0,
-            saves:0,
-            raw_json:{item_id:item.post.external_post_id,statistics:s}
-          });
+          success(item,m);
         }
       }
     }catch(error){
-      for(const item of group){
-        results.push({history_id:item.h.id,queue_id:item.post.id,platform:account.platform,status:'failed',error:error.message});
+      for(const item of youtube){
+        results.push({
+          history_id:item.h.id,
+          queue_id:item.post.id,
+          platform:item.account.platform,
+          status:'failed',
+          error:error.message
+        });
       }
     }
   }
 
-  // Instagram/Facebook metrics are per-media calls. Keep concurrency deliberately
-  // small so the platform is fast without creating an API-rate spike.
   let cursor=0;
   const workers=Array.from({length:Math.min(5,other.length)},async()=>{
     while(cursor<other.length){
-      const index=cursor++;
-      const item=other[index];
+      const item=other[cursor++];
       try{
         const m=await metricsFor(item.post,item.account);
         success(item,m);
@@ -318,19 +395,57 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
   await Promise.all(workers);
 
   if(snapshotRows.length){
-    await supabaseRequest('post_metrics_snapshots',{
-      method:'POST',
-      body:snapshotRows
-    });
+    await supabaseRequest('post_metrics_snapshots',{method:'POST',body:snapshotRows});
+  }
+
+  const analyticsAccounts=[];
+  const ytByAccount=new Map();
+  for(const item of youtube){
+    const list=ytByAccount.get(item.account.id)||[];
+    list.push(item);
+    ytByAccount.set(item.account.id,list);
+  }
+
+  let dailyRows=0;
+  for(const group of ytByAccount.values()){
+    try{
+      const daily=await youtubeDailyAnalytics(group,workspaceId);
+      if(daily.status==='needs_reconnect'){
+        analyticsAccounts.push({account_id:daily.account_id,status:'needs_reconnect',error:daily.error||null});
+        continue;
+      }
+      if(daily.rows.length){
+        await supabaseRequest('post_daily_metrics?on_conflict=history_id,metric_date,source',{
+          method:'POST',
+          headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+          body:daily.rows
+        }).catch(error=>{
+          if(!/post_daily_metrics/i.test(String(error?.message||''))) throw error;
+        });
+        dailyRows+=daily.rows.length;
+      }
+    }catch(error){
+      analyticsAccounts.push({account_id:group[0]?.account?.id,status:'failed',error:error.message});
+    }
+  }
+
+  const errorCounts={};
+  for(const x of results){
+    if(x.status!=='failed') continue;
+    const key=x.error||'Unknown metrics error';
+    errorCounts[key]=(errorCounts[key]||0)+1;
   }
 
   return {
     checked:(posts||[]).length,
     due:due.length,
     updated:snapshotRows.length,
+    daily_rows:dailyRows,
     skipped:results.filter(x=>['fresh','skipped','deferred'].includes(x.status)).length,
     failed:results.filter(x=>x.status==='failed').length,
     unsupported:results.filter(x=>x.status==='unsupported').length,
+    analytics_accounts:analyticsAccounts,
+    errors:Object.entries(errorCounts).map(([error,count])=>({error,count})).sort((a,b)=>b.count-a.count),
     results,
     refreshed_at:nowIso()
   };
