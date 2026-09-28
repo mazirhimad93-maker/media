@@ -67,7 +67,8 @@ function cell(r,k){
   if(k==='platform') return `<span class="platform-chip">${esc(platformLabel(r.platform))}</span>`;
   if(k==='account') return esc(r.account_username||'—');
   if(k==='status') return `<span class="status-chip ${statusClass(r.status)}">${esc(r.status||'—')}</span>`;
-  if(['views','likes','comments','shares','saves','engagements'].includes(k)) return fmt(r[k]||0);
+  if(['views','likes','comments','shares','saves','engagements','link_clicks','inbound_dms','dm_threads'].includes(k)) return fmt(r[k]||0);
+  if(k==='primary_result') return `<div class="primary-result-cell"><strong>${fmt(r.primary_result||0)}</strong><span>${esc(r.primary_result_label||'Result')}</span></div>`;
   if(k==='engagement_rate') return Number(r.engagement_rate||0).toFixed(2)+'%';
   if(k==='published_at') return dateShort(r.finished_at||r.created_at);
   if(k==='metrics_updated') return r.metrics_captured_at?dateShort(r.metrics_captured_at):'Not synced';
