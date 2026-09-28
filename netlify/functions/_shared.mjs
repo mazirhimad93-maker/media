@@ -358,6 +358,10 @@ export async function authUser(accessToken) {
   return authApi('user', { accessToken });
 }
 
+export async function authUpdateUser(accessToken, body) {
+  return authApi('user', { method:'PUT', body, accessToken });
+}
+
 export async function ensureAppUser(user, { fullName = null, touchLogin = false } = {}) {
   if (!user?.id) throw Object.assign(new Error('Authenticated user is missing an id'), { status: 401 });
 
