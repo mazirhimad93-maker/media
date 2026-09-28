@@ -1143,7 +1143,7 @@ function renderAccounts(){
       const percent=Number(account.daily_usage_percent||0);
 
       const inboxCell=account.inbox_state==='ready'
-        ? '<span class="status-chip status-approved">Ready</span>'
+        ? `<div class="inbox-ready-actions"><span class="status-chip status-approved">Ready</span><button class="sync-inbox-btn open-btn" data-id="${esc(account.id)}" type="button">Sync</button></div>`
         : account.inbox_state==='activate'
           ? `<button class="activate-inbox-btn open-btn" data-id="${esc(account.id)}" type="button">Activate inbox</button>`
           : account.inbox_state==='reconnect_required'
@@ -1194,6 +1194,9 @@ function renderAccounts(){
   document.querySelectorAll('.activate-inbox-btn').forEach(button=>{
     button.onclick=()=>activateExistingInbox(button.dataset.id,button);
   });
+  document.querySelectorAll('.sync-inbox-btn').forEach(button=>{
+    button.onclick=()=>syncExistingInbox(button.dataset.id,button);
+  });
 }
 
 async function refreshChannelData(){
@@ -1222,6 +1225,30 @@ async function activateExistingInbox(accountId,button){
       $('connector-message').textContent=error.message;
       $('connector-message').className='connector-message error';
     }
+    if(button){button.disabled=false;button.textContent=original;}
+  }
+}
+
+async function syncExistingInbox(accountId,button){
+  const original=button?.textContent||'Sync';
+  if(button){button.disabled=true;button.textContent='Syncing…';}
+  try{
+    const result=await api('/api/channels/inbox/sync',{
+      method:'POST',
+      body:{accountId}
+    });
+    if($('connector-message')){
+      $('connector-message').textContent=`Inbox synced: ${result.conversations||0} conversations, ${result.messages_inserted||0} new messages.`;
+      $('connector-message').className='connector-message success';
+    }
+    await refreshChannelData();
+    if(window.loadAlchemicInbox) await window.loadAlchemicInbox();
+  }catch(error){
+    if($('connector-message')){
+      $('connector-message').textContent=error.message;
+      $('connector-message').className='connector-message error';
+    }
+  }finally{
     if(button){button.disabled=false;button.textContent=original;}
   }
 }
