@@ -430,9 +430,14 @@ async function openInboxThread(row) {
     const conversation = result.conversation || {};
     $('conversation-lead-status').value = conversation.lead_status || 'new';
 
+    const deliveredIds = new Set((result.messages || [])
+      .filter((m) => m.direction === 'outbound' && m.platform_message_id)
+      .map((m) => m.platform_message_id));
     const messages = []
       .concat((result.messages || []).map((m) => Object.assign({}, m, { _time: m.sent_at || m.created_at, _kind: 'message' })))
-      .concat((result.outbox || []).map((m) => Object.assign({}, m, { direction: 'outbound', _time: m.sent_at || m.queued_at, _kind: 'outbox' })))
+      .concat((result.outbox || [])
+        .filter((m) => m.status !== 'sent' || !m.platform_message_id || !deliveredIds.has(m.platform_message_id))
+        .map((m) => Object.assign({}, m, { direction: 'outbound', _time: m.sent_at || m.queued_at, _kind: 'outbox' })))
       .sort((a, b) => new Date(a._time || 0) - new Date(b._time || 0));
 
     $('conversation-messages').innerHTML = messages.length ? messages.map((m) => {
@@ -441,8 +446,29 @@ async function openInboxThread(row) {
       return '<div class="message-bubble ' + (m.direction === 'outbound' ? 'outbound' : 'inbound') + ' ' + (queued ? 'queued' : '') + '">' +
         '<div>' + media.esc(m.body || '') + '</div>' +
         '<small>' + (m._time ? new Date(m._time).toLocaleString() : '') + (stateText ? ' · ' + media.esc(stateText) : '') + '</small>' +
+        (m.last_error ? '<small>Delivery error: ' + media.esc(m.last_error) + '</small>' : '') +
+        (m._kind === 'outbox' && ['pending', 'failed'].includes(m.status)
+          ? '<button class="text-btn outbox-send-now" data-id="' + media.esc(m.id) + '" type="button">' + (m.status === 'failed' ? 'Retry' : 'Send now') + '</button>'
+          : '') +
         '</div>';
     }).join('') : '<div class="empty-list">No messages in this conversation yet.</div>';
+
+    $('conversation-messages').querySelectorAll('.outbox-send-now').forEach((button) => {
+      button.onclick = async () => {
+        button.disabled = true;
+        button.textContent = 'Sending…';
+        try {
+          const delivery = await media.api('/api/social/outbox/send', {method: 'POST', body: {outboxId: button.dataset.id}});
+          await openInboxThread(row);
+          if (delivery.error) alert(delivery.error);
+          else if (!delivery.sent) alert('Reply is still being sent. Refresh the conversation shortly.');
+        } catch(error) {
+          alert(error.message);
+          button.disabled = false;
+          button.textContent = 'Send now';
+        }
+      };
+    });
 
     requestAnimationFrame(() => {
       const box = $('conversation-messages');
@@ -465,15 +491,17 @@ async function sendReply(event) {
 
   const button = $('conversation-reply-submit');
   button.disabled = true;
-  button.textContent = 'Queuing…';
+  button.textContent = 'Sending…';
 
   try {
-    await media.api('/api/social/reply', {
+    const result = await media.api('/api/social/reply', {
       method: 'POST',
       body: { conversationId: selected.id, body: body }
     });
     $('conversation-reply-body').value = '';
     await openInboxThread(selected);
+    if (result.delivery?.error) alert(result.delivery.error);
+    else if (!result.sent) alert('Reply is still being sent. Refresh the conversation shortly.');
   } catch (error) {
     alert(error.message);
   } finally {

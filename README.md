@@ -19,7 +19,7 @@ A separate deployable platform that combines:
 - the existing **Clipper / Distributor** content lineage;
 - published-post performance (views, likes, comments, shares, saves);
 - Instagram comments and DMs in one social inbox;
-- manual social replies through an n8n outbox worker;
+- manual social replies sent immediately from the Inbox, with an optional n8n outbox worker for pending retries;
 - comment → private-DM replies for lead-generation CTAs;
 - tracked links and click attribution;
 - social contacts / leads and conversion events;
@@ -221,7 +221,7 @@ There is no LLM in the social-reply path.
 ```text
 Human types reply
   → social_outbox
-  → n8n dispatcher
+  → immediate delivery (n8n worker can retry pending replies)
   → Instagram Send API
   → social_messages
 ```

@@ -117,6 +117,10 @@
   to = "/.netlify/functions/dispatch-social"
   status = 200
 [[redirects]]
+  from = "/api/social/outbox/send"
+  to = "/.netlify/functions/social-outbox-send"
+  status = 200
+[[redirects]]
   from = "/api/metrics/sync"
   to = "/.netlify/functions/metrics-sync"
   status = 200

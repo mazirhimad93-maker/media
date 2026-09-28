@@ -15,7 +15,7 @@ export default async (request) => {
     const [conversation,messages,outbox]=await Promise.all([
       supabaseRequest('v_social_inbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=*&limit=1'),
       supabaseRequest(scopedPath('social_messages?conversation_id=eq.'+encodeURIComponent(id)+'&select=*&order=sent_at.asc&limit=500',workspaceId)),
-      supabaseRequest(scopedPath('social_outbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=id,body,status,reply_mode,target_platform_id,last_error,queued_at,sent_at&order=queued_at.asc&limit=100',workspaceId)),
+      supabaseRequest(scopedPath('social_outbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=id,body,status,reply_mode,target_platform_id,platform_message_id,last_error,queued_at,sent_at&order=queued_at.asc&limit=100',workspaceId)),
     ]);
 
     if(!conversation?.[0]) throw Object.assign(new Error('Conversation not found'),{status:404});

@@ -13,7 +13,7 @@ Then restart n8n so `$env` can see them.
 
 ## ALCHEMIC SOCIAL OUTBOX DISPATCHER V1
 
-Runs once per minute. It calls the Social Hub's protected dispatcher, which atomically claims pending rows from `social_outbox`, sends them with the OAuth token already stored in `content_accounts`, writes successful outbound messages into `social_messages`, and updates the conversation.
+Optional retry worker. Replies now send immediately when you press Send reply; existing pending messages can be sent using Send now in the Inbox. If activated, this workflow runs once per minute and calls the Social Hub's protected dispatcher, which atomically claims remaining pending rows from `social_outbox`, sends them with the OAuth token already stored in `content_accounts`, writes successful outbound messages into `social_messages`, and updates the conversation. Set `ALCHEMIC_SOCIAL_HUB_URL` to the current site if you use it.
 
 No AI is involved. You type the reply in the Social Hub UI.
 

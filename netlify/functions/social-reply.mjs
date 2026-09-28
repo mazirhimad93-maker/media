@@ -1,4 +1,5 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { dispatchSocialOutboxItem } from './_social-delivery.mjs';
 
 export default async (request) => {
   try {
@@ -38,7 +39,16 @@ export default async (request) => {
       }
     });
 
-    return jsonResponse({queued:true,outbox:created?.[0]||null},201);
+    const outbox=created?.[0];
+    if(!outbox?.id) throw new Error('Reply was not added to the outbox.');
+    let delivery;
+    try {
+      delivery=await dispatchSocialOutboxItem(outbox.id,workspaceId);
+    } catch(error) {
+      console.error('Immediate social delivery could not start',error);
+      delivery={id:outbox.id,status:'pending',sent:false,error:'Delivery could not start. Use Send now on the pending reply to retry.'};
+    }
+    return jsonResponse({queued:delivery.status==='pending',sent:delivery.sent===true,delivery,outbox},201);
   } catch(error){
     return publicError(error,error.status||500);
   }
