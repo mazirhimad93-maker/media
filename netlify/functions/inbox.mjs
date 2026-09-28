@@ -1,17 +1,29 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 export default async (request) => {
   try {
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     const url=new URL(request.url);
     const limit=Math.min(200,Math.max(1,Number(url.searchParams.get('limit')||100)));
     const offset=Math.max(0,Number(url.searchParams.get('offset')||0));
 
+    const accounts=await supabaseRequest(
+      scopedPath('content_accounts?select=id&limit=5000',workspaceId)
+    ).catch(()=>[]);
+    const ids=(accounts||[]).map(a=>a.id).filter(Boolean);
+
+    if(workspaceId && !ids.length) return jsonResponse({social:[]});
+
     const social=await supabaseRequest(
-      `v_social_inbox?select=*&order=last_message_at.desc.nullslast&limit=${limit}&offset=${offset}`
+      'v_social_inbox?select=*&order=last_message_at.desc.nullslast&limit='+limit+'&offset='+offset
     ).catch(()=>[]);
 
-    return jsonResponse({social:social||[]});
+    const allowed=new Set(ids);
+    const filtered=workspaceId
+      ? (social||[]).filter(x=>allowed.has(x.account_id))
+      : (social||[]);
+
+    return jsonResponse({social:filtered});
   } catch(error){
     return publicError(error,error.status||500);
   }
