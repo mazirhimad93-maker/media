@@ -286,6 +286,8 @@ function renderInboxChannelHealth(accounts) {
         </div>
         ${account.inbox_state === 'reconnect_required'
           ? '<button class="text-btn inbox-reconnect" data-id="' + media.esc(account.id) + '" type="button">Reconnect DMs</button>'
+          : account.inbox_state === 'activate'
+            ? '<button class="text-btn inbox-activate-one" data-id="' + media.esc(account.id) + '" type="button">Activate inbox</button>'
           : ''}
       </div>
     `;
@@ -295,6 +297,20 @@ function renderInboxChannelHealth(accounts) {
     button.onclick = () => {
       media.setView('accounts');
       window.connectAlchemicChannel?.(button.dataset.id);
+    };
+  });
+  host.querySelectorAll('.inbox-activate-one').forEach((button) => {
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        await media.api('/api/channels/inbox/activate', { method:'POST', body:{ accountId:button.dataset.id } });
+        await loadInboxHealth();
+      } catch (error) {
+        const message = $('inbox-sync-message');
+        message.textContent = error.message;
+        message.className = 'connector-message error';
+        button.disabled = false;
+      }
     };
   });
 }
@@ -324,40 +340,21 @@ async function loadInboxHealth() {
   }
 }
 
-async function syncInboxAccounts({ activate = false, silent = false } = {}) {
+async function syncInboxAccounts({ silent = false } = {}) {
   if (inboxBusy || !media?.state?.auth?.accessToken) return;
   inboxBusy = true;
 
-  const activateButton = $('configure-inboxes');
   const syncButton = $('refresh-inbox');
   const message = $('inbox-sync-message');
 
-  if (activateButton) activateButton.disabled = true;
   if (syncButton) syncButton.disabled = true;
   if (message) {
-    message.textContent = activate ? 'Activating connected inboxes…' : 'Pulling messages from connected inboxes…';
+    message.textContent = 'Pulling messages from connected inboxes…';
     message.className = 'connector-message';
   }
 
   try {
-    let accounts = await loadInboxHealth();
-
-    if (activate) {
-      for (const account of accounts) {
-        if (!['instagram_reels','facebook_page','facebook'].includes(account.platform)) continue;
-        if (account.inbox_state !== 'activate') continue;
-
-        try {
-          await media.api('/api/channels/inbox/activate', {
-            method:'POST',
-            body:{ accountId: account.id }
-          });
-        } catch (error) {
-          account.activation_error = error.message;
-        }
-      }
-      accounts = await loadInboxHealth();
-    }
+    const accounts = await loadInboxHealth();
 
     const syncable = accounts.filter((account) =>
       ['instagram_reels','facebook_page','facebook'].includes(account.platform) &&
@@ -408,7 +405,6 @@ async function syncInboxAccounts({ activate = false, silent = false } = {}) {
     }
   } finally {
     inboxBusy = false;
-    if (activateButton) activateButton.disabled = false;
     if (syncButton) syncButton.disabled = false;
   }
 }
@@ -515,8 +511,7 @@ function bindUi() {
     $('user-menu-popover').hidden = !$('user-menu-popover').hidden;
   });
 
-  $('refresh-inbox').addEventListener('click', () => syncInboxAccounts({ activate:false, silent:false }));
-  $('configure-inboxes').addEventListener('click', () => syncInboxAccounts({ activate:true, silent:false }));
+  $('refresh-inbox').addEventListener('click', () => syncInboxAccounts({ silent:false }));
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);
   $('conversation-lead-status').addEventListener('change', changeLeadStatus);
@@ -525,7 +520,7 @@ function bindUi() {
     button.addEventListener('click', () => {
       loadInbox();
       loadInboxHealth();
-      setTimeout(() => syncInboxAccounts({ activate:false, silent:true }), 250);
+      setTimeout(() => syncInboxAccounts({ silent:true }), 250);
     });
   });
 }
