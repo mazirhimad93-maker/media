@@ -144,8 +144,17 @@ async function register(event) {
     media.state.auth.profile = result.profile;
     await showApp();
   } catch (error) {
-    $('auth-message').textContent = error.message;
-    $('auth-message').className = 'auth-message error';
+    const message = String(error.message || '');
+    if (message.toLowerCase().includes('already registered')) {
+      const email = $('register-email').value;
+      setAuthMode('login');
+      $('login-email').value = email;
+      $('auth-message').textContent = 'This account already exists. Sign in with the password you registered.';
+      $('auth-message').className = 'auth-message success';
+    } else {
+      $('auth-message').textContent = message;
+      $('auth-message').className = 'auth-message error';
+    }
   } finally {
     button.disabled = false;
     button.textContent = 'Create account';
