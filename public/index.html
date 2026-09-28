@@ -8,7 +8,37 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div id="app-shell" class="app-shell">
+  <section id="auth-shell" class="auth-shell">
+    <div class="auth-card">
+      <div class="brand-icon auth-logo">A</div>
+      <div class="eyebrow-small">ALCHEMIC MEDIA</div>
+      <h1 id="auth-title">Welcome back</h1>
+      <p id="auth-subtitle">Sign in to your media workspace.</p>
+
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab active" type="button">Sign in</button>
+        <button id="auth-tab-register" class="auth-tab" type="button">Register</button>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <label><span>Email</span><input id="login-email" type="email" autocomplete="email" required></label>
+        <label><span>Password</span><input id="login-password" type="password" autocomplete="current-password" required></label>
+        <button id="login-submit" class="primary-btn" type="submit">Sign in</button>
+      </form>
+
+      <form id="register-form" class="auth-form" hidden>
+        <label><span>Name</span><input id="register-name" autocomplete="name" placeholder="Your name"></label>
+        <label><span>Email</span><input id="register-email" type="email" autocomplete="email" required></label>
+        <label><span>Password</span><input id="register-password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label><span>Registration code</span><input id="register-code" type="password" autocomplete="off" required placeholder="Workspace signup code"></label>
+        <button id="register-submit" class="primary-btn" type="submit">Create account</button>
+      </form>
+
+      <div id="auth-message" class="auth-message"></div>
+    </div>
+  </section>
+
+  <div id="app-shell" class="app-shell" hidden>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">A</div>
@@ -43,6 +73,16 @@
         <div class="header-actions">
           <span class="preview-badge">Internal</span>
           <button id="refresh-all" class="secondary-btn">Refresh data</button>
+          <div class="user-menu">
+            <button id="user-menu-button" class="user-menu-button" type="button">
+              <span id="user-avatar" class="user-avatar">U</span>
+              <span class="user-menu-copy"><strong id="user-name">User</strong><small id="user-role">member</small></span>
+            </button>
+            <div id="user-menu-popover" class="user-menu-popover" hidden>
+              <span id="user-email" class="user-email"></span>
+              <button id="logout-button" class="logout-button" type="button">Log out</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -205,14 +245,60 @@
       </section>
 
       <section class="view" id="view-inbox">
-        <div class="section-top"><div><h2>Unified Inbox</h2><p>Instagram, Facebook, TikTok and email conversations will live here.</p></div></div>
-        <div class="notice">
-          <div class="notice-icon">🔒</div>
-          <div><strong>Inbox transport is prepared, but private messages are not exposed on this unauthenticated internal build.</strong><p>Once we add the real Supabase user/login layer, the same UI will load the social conversation tables and manual reply outbox.</p></div>
+        <div class="section-top">
+          <div><h2>Unified Inbox</h2><p>Social conversations and read-only email replies in one place.</p></div>
+          <div class="filters">
+            <select id="inbox-source-filter">
+              <option value="all">All inboxes</option>
+              <option value="social">Social</option>
+              <option value="email">Email</option>
+            </select>
+            <button id="refresh-inbox" class="secondary-btn" type="button">Refresh inbox</button>
+          </div>
         </div>
-        <div class="inbox-preview">
-          <aside class="thread-preview"><div class="inbox-search">Search conversations</div><div class="empty-list">Messaging OAuth/authentication comes next.</div></aside>
-          <div class="conversation-preview"><div class="conversation-placeholder"><div class="large-icon">✉</div><h3>Your unified social inbox</h3><p>Comments, DMs, replies and lead stages will appear here once messaging permissions are active.</p></div></div>
+
+        <div class="inbox-layout">
+          <aside class="inbox-sidebar card">
+            <div class="inbox-search-wrap"><input id="inbox-search" type="search" placeholder="Search conversations"></div>
+            <div id="inbox-thread-list" class="inbox-thread-list"></div>
+          </aside>
+
+          <article class="inbox-conversation card">
+            <div id="inbox-empty" class="conversation-placeholder">
+              <div class="large-icon">✉</div>
+              <h3>Select a conversation</h3>
+              <p>Social messages can be replied to here. Email replies are read-only so the Outreach Engine stays isolated.</p>
+            </div>
+
+            <div id="inbox-conversation-wrap" hidden>
+              <div class="conversation-toolbar">
+                <div>
+                  <h3 id="conversation-contact-name">Conversation</h3>
+                  <p id="conversation-contact-meta"></p>
+                </div>
+                <select id="conversation-lead-status">
+                  <option value="new">New</option>
+                  <option value="engaged">Engaged</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="registered">Registered</option>
+                  <option value="booked">Booked</option>
+                  <option value="client">Client</option>
+                  <option value="not_fit">Not fit</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+
+              <div id="conversation-messages" class="conversation-messages"></div>
+
+              <form id="conversation-reply-form" class="conversation-composer">
+                <textarea id="conversation-reply-body" rows="3" placeholder="Write a reply..."></textarea>
+                <div class="composer-actions">
+                  <span id="conversation-mode-note">Reply will be queued to the connected social account.</span>
+                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit">Send reply</button>
+                </div>
+              </form>
+            </div>
+          </article>
         </div>
       </section>
 
