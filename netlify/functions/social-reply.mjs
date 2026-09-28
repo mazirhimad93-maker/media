@@ -9,7 +9,9 @@ export default async (request) => {
     const input=await request.json();
     const conversationId=String(input.conversationId||'');
     const body=String(input.body||'').trim();
-    if(!conversationId||!body) throw Object.assign(new Error('conversationId and body are required'),{status:400});
+    const attachment=input.attachment||null;
+    if(!conversationId||(!body&&!attachment)) throw Object.assign(new Error('Choose a message or attachment.'),{status:400});
+    if(attachment&&body) throw Object.assign(new Error('Send the attachment and text as separate messages.'),{status:400});
 
     const rows=await supabaseRequest(
       scopedPath('social_conversations?id=eq.'+encodeURIComponent(conversationId)+'&select=id,account_id,contact_id,platform,metadata&limit=1',workspaceId)
@@ -22,6 +24,18 @@ export default async (request) => {
     if(!accounts?.[0]?.access_token||accounts[0].metadata?.disconnected_at){
       throw Object.assign(new Error('This channel is disconnected. Reconnect it before replying.'),{status:409});
     }
+    let media=null;
+    if(attachment){
+      const type=String(attachment.type||'');
+      const path=String(attachment.storagePath||'');
+      const prefix=`${workspaceId||'default'}/${conversationId}/`;
+      const extension=path.slice(prefix.length).match(/^[0-9a-f-]{36}\.([a-z0-9]+)$/)?.[1];
+      const allowed={image:['jpg','png'],video:['mp4'],audio:['m4a','wav'],file:['pdf']};
+      if(!allowed[type]?.includes(extension)||!path.startsWith(prefix)){
+        throw Object.assign(new Error('Invalid attachment. Choose the file again.'),{status:400});
+      }
+      media={type,url:`${process.env.SUPABASE_URL?.replace(/\/$/,'')}/storage/v1/object/public/social-message-media/${path}`,name:String(attachment.name||type).slice(0,120)};
+    }
 
     const created=await supabaseRequest('social_outbox',{
       method:'POST',
@@ -32,9 +46,9 @@ export default async (request) => {
         contact_id:c.contact_id,
         reply_mode:input.replyMode||'dm',
         target_platform_id:input.targetPlatformId||null,
-        body,
+        body:body||`[${media.type==='audio'?'Voice message':media.name}]`,
         status:'pending',
-        metadata:{manual:true,created_from:'alchemic_media'},
+        metadata:{manual:true,created_from:'alchemic_media',...(media?{attachment:media}:{})},
         ...(workspaceId?{workspace_id:workspaceId}:{})
       }
     });

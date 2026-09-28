@@ -15,13 +15,13 @@ export default async (request) => {
     const [conversation,messages,outbox]=await Promise.all([
       supabaseRequest('v_social_inbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=*&limit=1'),
       supabaseRequest(scopedPath('social_messages?conversation_id=eq.'+encodeURIComponent(id)+'&select=*&order=sent_at.asc&limit=500',workspaceId)),
-      supabaseRequest(scopedPath('social_outbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=id,body,status,reply_mode,target_platform_id,platform_message_id,last_error,queued_at,sent_at&order=queued_at.asc&limit=100',workspaceId)),
+      supabaseRequest(scopedPath('social_outbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=id,body,status,reply_mode,target_platform_id,platform_message_id,last_error,queued_at,sent_at,metadata&order=queued_at.asc&limit=100',workspaceId)),
     ]);
 
     if(!conversation?.[0]) throw Object.assign(new Error('Conversation not found'),{status:404});
 
     await supabaseRequest(
-      scopedPath('social_conversations?id=eq.'+encodeURIComponent(id),workspaceId),
+      scopedPath('social_conversations?id=eq.'+encodeURIComponent(id)+'&unread_count=gt.0',workspaceId),
       {method:'PATCH',body:{unread_count:0,updated_at:new Date().toISOString()}}
     ).catch(()=>{});
 

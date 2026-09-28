@@ -55,3 +55,23 @@ test('a concurrent dispatcher cannot send the same row twice',async()=>{
   assert.equal(result.status,'sending');
   assert.equal(sendCount,0);
 });
+
+test('an audio reply sends a Meta attachment and records playback media',async()=>{
+  const {db,calls}=fakeDatabase();
+  const audioJob={...job,id:'outbox-audio',body:'[Voice message]',metadata:{attachment:{type:'audio',url:'https://example.supabase.co/storage/v1/object/public/social-message-media/voice.wav',name:'Voice message.wav'}}};
+  const mediaDb=async(path,options)=>{
+    if(path.startsWith('social_outbox?')&&!options) return [audioJob];
+    if(path.startsWith('social_outbox?')&&path.includes('status=eq.pending')) return [{...audioJob,status:'sending',attempts:1}];
+    return db(path,options);
+  };
+  let payload;
+  const result=await dispatchSocialOutboxItem('outbox-audio','workspace-1',{
+    db:mediaDb,
+    fetcher:async(url,options)=>{payload=JSON.parse(options.body);return new Response(JSON.stringify({message_id:'audio-1'}),{status:200});}
+  });
+  assert.equal(result.sent,true);
+  assert.deepEqual(payload.message,{attachment:{type:'audio',payload:{url:audioJob.metadata.attachment.url}}});
+  const stored=calls.find(c=>c.path==='social_messages'&&c.options?.method==='POST')?.options.body;
+  assert.equal(stored.message_type,'audio');
+  assert.equal(stored.media_url,audioJob.metadata.attachment.url);
+});

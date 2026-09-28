@@ -101,12 +101,20 @@
   to = "/.netlify/functions/inbox"
   status = 200
 [[redirects]]
+  from = "/api/leads"
+  to = "/.netlify/functions/leads"
+  status = 200
+[[redirects]]
   from = "/api/conversation"
   to = "/.netlify/functions/conversation"
   status = 200
 [[redirects]]
   from = "/api/social/reply"
   to = "/.netlify/functions/social-reply"
+  status = 200
+[[redirects]]
+  from = "/api/social/media/upload"
+  to = "/.netlify/functions/social-media-upload"
   status = 200
 [[redirects]]
   from = "/api/social/lead-status"
@@ -163,5 +171,5 @@
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
     Referrer-Policy = "same-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Permissions-Policy = "camera=(), microphone=(self), geolocation=()"
     Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://www.instagram.com https://www.facebook.com https://www.tiktok.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com https://www.instagram.com https://www.facebook.com"

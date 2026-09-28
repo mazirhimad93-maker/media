@@ -2,6 +2,12 @@ const $ = (id) => document.getElementById(id);
 
 let media = null;
 let inboxBusy = false;
+let conversationFetch = null;
+let conversationSignature = '';
+let localReplies = [];
+let pendingAttachment = null;
+let recordingSession = null;
+let recordingTimer = null;
 
 function waitForMedia() {
   if (window.__alchemic) {
@@ -59,6 +65,7 @@ async function showApp() {
   await media.load();
   await loadInbox();
   await loadInboxHealth();
+  if (media.state.view === 'leads') window.loadAlchemicLeads?.();
 }
 
 async function restoreSession() {
@@ -173,6 +180,8 @@ async function logout() {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
   } catch {}
   media.state.inbox = { social: [], selected: null, conversation: null };
+  localReplies = [];
+  clearAttachment();
   showAuth('');
 }
 
@@ -412,101 +421,198 @@ async function syncInboxAccounts({ silent = false } = {}) {
 window.loadAlchemicInboxHealth = loadInboxHealth;
 window.syncAlchemicInboxes = syncInboxAccounts;
 
-async function openInboxThread(row) {
-  media.state.inbox.selected = row;
-  renderInboxThreads();
+function safeMediaUrl(value) {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:', 'blob:'].includes(url.protocol) ? media.esc(url.href) : '';
+  } catch { return ''; }
+}
 
-  $('conversation-lead-status').hidden = false;
-  $('conversation-reply-form').hidden = false;
+function messageMedia(m) {
+  const attachment = m.metadata?.attachment || {};
+  const url = safeMediaUrl(m.media_url || attachment.url);
+  if (!url) return '';
+  const type = m.message_type || attachment.type;
+  if (type === 'image') return `<a href="${url}" target="_blank" rel="noopener"><img class="chat-image" src="${url}" alt="Attached photo" loading="lazy"></a>`;
+  if (type === 'video') return `<video class="chat-video" controls preload="metadata" src="${url}"></video>`;
+  if (type === 'audio') return `<audio class="chat-audio" controls preload="metadata" src="${url}"></audio>`;
+  return `<a class="chat-file" href="${url}" target="_blank" rel="noopener">↗ ${media.esc(attachment.name || 'Open attachment')}</a>`;
+}
+
+function renderConversation(forceScroll = false) {
+  const result = media.state.inbox.conversation || {};
+  const deliveredIds = new Set((result.messages || []).filter((m) => m.direction === 'outbound' && m.platform_message_id).map((m) => m.platform_message_id));
+  const outbox = (result.outbox || []).filter((m) => m.status !== 'sent' || !m.platform_message_id || !deliveredIds.has(m.platform_message_id));
+  const remoteIds = new Set((result.outbox || []).map((m) => m.id));
+  localReplies = localReplies.filter((m) => !m.outboxId || !remoteIds.has(m.outboxId));
+  const messages = [
+    ...(result.messages || []).map((m) => ({ ...m, _time: m.sent_at || m.created_at, _kind: 'message' })),
+    ...outbox.map((m) => ({ ...m, direction: 'outbound', _time: m.sent_at || m.queued_at, _kind: 'outbox' })),
+    ...localReplies,
+  ].sort((a, b) => new Date(a._time || 0) - new Date(b._time || 0));
+  const signature = JSON.stringify(messages.map((m) => [m.id, m.platform_message_id, m.status, m.delivery_status, m.last_error, m.media_url, m.body]));
+  if (signature === conversationSignature && !forceScroll) return;
+  conversationSignature = signature;
+  const box = $('conversation-messages');
+  const atBottom = forceScroll || box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+  const oldTop = box.scrollTop;
+  box.innerHTML = messages.length ? messages.map((m) => {
+    const stateText = m.delivery_status || m.status || '';
+    const queued = m._kind !== 'message' && m.status !== 'sent';
+    const mediaMarkup = messageMedia(m);
+    const text = m.body && (!mediaMarkup || !String(m.body).startsWith('[')) ? `<div class="message-text">${media.esc(m.body)}</div>` : '';
+    return `<div class="message-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${queued ? 'queued' : ''}">
+      ${mediaMarkup}${text || (!mediaMarkup ? '<div>Attachment</div>' : '')}
+      <small>${m._time ? new Date(m._time).toLocaleString() : ''}${stateText ? ' · ' + media.esc(stateText) : ''}</small>
+      ${m.last_error ? `<small class="delivery-error">Delivery error: ${media.esc(m.last_error)}</small>` : ''}
+      ${m._kind === 'outbox' && ['pending', 'failed'].includes(m.status) ? `<button class="text-btn outbox-send-now" data-id="${media.esc(m.id)}" type="button">${m.status === 'failed' ? 'Retry' : 'Send now'}</button>` : ''}
+    </div>`;
+  }).join('') : '<div class="empty-list">No messages in this conversation yet.</div>';
+  requestAnimationFrame(() => { box.scrollTop = atBottom ? box.scrollHeight : oldTop; });
+}
+
+async function refreshConversation() {
+  const selected = media.state.inbox.selected;
+  if (!selected || media.state.view !== 'inbox') return;
+  if (conversationFetch) return conversationFetch;
+  const id = selected.id;
+  conversationFetch = (async () => {
+    try {
+      const result = await media.api('/api/conversation?id=' + encodeURIComponent(id));
+      if (media.state.inbox.selected?.id !== id) return;
+      media.state.inbox.conversation = result;
+      $('conversation-lead-status').value = result.conversation?.lead_status || 'new';
+      renderConversation();
+    } catch (error) {
+      if (!media.state.inbox.conversation && media.state.inbox.selected?.id === id) $('conversation-messages').innerHTML = `<div class="empty-list">${media.esc(error.message)}</div>`;
+      else $('composer-error').textContent = error.message;
+    }
+  })();
+  try { await conversationFetch; } finally { conversationFetch = null; }
+}
+
+async function openInboxThread(row) {
+  const switching = String(media.state.inbox.selected?.id) !== String(row.id);
+  media.state.inbox.selected = row;
+  if (switching) {
+    media.state.inbox.conversation = null;
+    conversationSignature = '';
+    localReplies = [];
+    clearAttachment();
+    $('conversation-reply-body').value = '';
+    $('conversation-messages').innerHTML = '<div class="empty-list">Loading conversation…</div>';
+  }
+  renderInboxThreads();
+  document.querySelector('.inbox-layout').classList.add('show-thread');
   $('inbox-empty').hidden = true;
   $('inbox-conversation-wrap').hidden = false;
   $('conversation-contact-name').textContent = row.name;
   $('conversation-contact-meta').textContent = row.meta;
-  $('conversation-messages').innerHTML = '<div class="empty-list">Loading conversation…</div>';
+  if (conversationFetch) await conversationFetch;
+  await refreshConversation();
+  loadInbox();
+}
 
-  try {
-    const result = await media.api('/api/conversation?id=' + encodeURIComponent(row.id));
-    media.state.inbox.conversation = result;
-    const conversation = result.conversation || {};
-    $('conversation-lead-status').value = conversation.lead_status || 'new';
+window.openAlchemicConversation = async (id, lead = null) => {
+  media.setView('inbox');
+  await loadInbox();
+  const row = inboxThreadRows().find((item) => String(item.id) === String(id)) || (lead ? {
+    source: 'social', id, name: lead.contact_display_name || lead.contact_username || 'Social lead',
+    meta: media.platformLabel(lead.platform) + ' · @' + (lead.account_username || 'account'),
+    preview: lead.last_message, at: lead.last_message_at,
+  } : null);
+  if (row) await openInboxThread(row);
+  else $('inbox-sync-message').textContent = 'This conversation is not in the current inbox list.';
+};
 
-    const deliveredIds = new Set((result.messages || [])
-      .filter((m) => m.direction === 'outbound' && m.platform_message_id)
-      .map((m) => m.platform_message_id));
-    const messages = []
-      .concat((result.messages || []).map((m) => Object.assign({}, m, { _time: m.sent_at || m.created_at, _kind: 'message' })))
-      .concat((result.outbox || [])
-        .filter((m) => m.status !== 'sent' || !m.platform_message_id || !deliveredIds.has(m.platform_message_id))
-        .map((m) => Object.assign({}, m, { direction: 'outbound', _time: m.sent_at || m.queued_at, _kind: 'outbox' })))
-      .sort((a, b) => new Date(a._time || 0) - new Date(b._time || 0));
+function clearAttachment() {
+  if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
+  pendingAttachment = null;
+  if ($('composer-file-input')) $('composer-file-input').value = '';
+  if ($('composer-attachment')) { $('composer-attachment').hidden = true; $('composer-attachment').innerHTML = ''; }
+}
 
-    $('conversation-messages').innerHTML = messages.length ? messages.map((m) => {
-      const stateText = m.delivery_status || m.status || '';
-      const queued = m._kind === 'outbox' && m.status !== 'sent';
-      return '<div class="message-bubble ' + (m.direction === 'outbound' ? 'outbound' : 'inbound') + ' ' + (queued ? 'queued' : '') + '">' +
-        '<div>' + media.esc(m.body || '') + '</div>' +
-        '<small>' + (m._time ? new Date(m._time).toLocaleString() : '') + (stateText ? ' · ' + media.esc(stateText) : '') + '</small>' +
-        (m.last_error ? '<small>Delivery error: ' + media.esc(m.last_error) + '</small>' : '') +
-        (m._kind === 'outbox' && ['pending', 'failed'].includes(m.status)
-          ? '<button class="text-btn outbox-send-now" data-id="' + media.esc(m.id) + '" type="button">' + (m.status === 'failed' ? 'Retry' : 'Send now') + '</button>'
-          : '') +
-        '</div>';
-    }).join('') : '<div class="empty-list">No messages in this conversation yet.</div>';
-
-    $('conversation-messages').querySelectorAll('.outbox-send-now').forEach((button) => {
-      button.onclick = async () => {
-        button.disabled = true;
-        button.textContent = 'Sending…';
-        try {
-          const delivery = await media.api('/api/social/outbox/send', {method: 'POST', body: {outboxId: button.dataset.id}});
-          await openInboxThread(row);
-          if (delivery.error) alert(delivery.error);
-          else if (!delivery.sent) alert('Reply is still being sent. Refresh the conversation shortly.');
-        } catch(error) {
-          alert(error.message);
-          button.disabled = false;
-          button.textContent = 'Send now';
-        }
-      };
-    });
-
-    requestAnimationFrame(() => {
-      const box = $('conversation-messages');
-      box.scrollTop = box.scrollHeight;
-    });
-
-    await loadInbox();
-  } catch (error) {
-    $('conversation-messages').innerHTML = '<div class="empty-list">' + media.esc(error.message) + '</div>';
+function stageAttachment(file) {
+  $('composer-error').textContent = '';
+  if (!file) return;
+  if (!['image/jpeg','image/png','video/mp4','audio/mp4','audio/wav','audio/x-wav','application/pdf'].includes(file.type)) {
+    $('composer-error').textContent = 'Use a JPEG or PNG photo, MP4 video, M4A or WAV audio, or PDF file.';
+    return;
   }
+  if (file.size > 4 * 1024 * 1024) { $('composer-error').textContent = 'Choose a file smaller than 4 MB.'; return; }
+  clearAttachment();
+  pendingAttachment = { file, previewUrl: URL.createObjectURL(file) };
+  const preview = file.type.startsWith('audio/') ? `<audio controls src="${safeMediaUrl(pendingAttachment.previewUrl)}"></audio>` : '';
+  $('composer-attachment').innerHTML = `<span>📎 ${media.esc(file.name)} · sends separately from text</span>${preview}<button class="text-btn" type="button" id="composer-remove-file">Remove</button>`;
+  $('composer-attachment').hidden = false;
+  $('composer-remove-file').onclick = clearAttachment;
+}
+
+async function uploadAttachment(file, conversationId) {
+  const form = new FormData();
+  form.append('conversationId', conversationId);
+  form.append('file', file);
+  const response = await fetch('/api/social/media/upload', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { authorization: `Bearer ${media.state.auth.accessToken}` }, body: form,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Could not upload the attachment.');
+  return result;
 }
 
 async function sendReply(event) {
   event.preventDefault();
   const selected = media.state.inbox.selected;
   if (!selected || selected.source !== 'social') return;
-
   const body = $('conversation-reply-body').value.trim();
-  if (!body) return;
-
+  const attachment = pendingAttachment;
+  if (!body && !attachment) return;
   const button = $('conversation-reply-submit');
+  if (button.disabled) return;
   button.disabled = true;
-  button.textContent = 'Sending…';
-
+  $('composer-error').textContent = '';
+  const local = {
+    id: `local-${Date.now()}`, direction: 'outbound', body: attachment ? `[${attachment.file.name}]` : body,
+    message_type: attachment?.file.type.split('/')[0] || 'text',
+    media_url: attachment?.previewUrl || null,
+    status: attachment ? 'uploading' : 'sending', _kind: 'local', _time: new Date().toISOString(),
+  };
+  localReplies.push(local);
+  renderConversation(true);
+  if (!attachment) $('conversation-reply-body').value = '';
   try {
+    let uploaded;
+    if (attachment) {
+      button.textContent = 'Uploading…';
+      uploaded = await uploadAttachment(attachment.file, selected.id);
+      local.media_url = uploaded.url;
+      local.message_type = uploaded.type;
+      local.status = 'sending';
+      renderConversation(true);
+    }
+    button.textContent = 'Sending…';
     const result = await media.api('/api/social/reply', {
-      method: 'POST',
-      body: { conversationId: selected.id, body: body }
+      method: 'POST', body: { conversationId: selected.id, body: attachment ? '' : body,
+        ...(uploaded ? { attachment: { storagePath: uploaded.storagePath, type: uploaded.type, name: uploaded.name } } : {}) },
     });
-    $('conversation-reply-body').value = '';
-    await openInboxThread(selected);
-    if (result.delivery?.error) alert(result.delivery.error);
-    else if (!result.sent) alert('Reply is still being sent. Refresh the conversation shortly.');
+    local.outboxId = result.outbox?.id;
+    local.status = result.delivery?.status || (result.sent ? 'sent' : 'pending');
+    local.last_error = result.delivery?.error || '';
+    renderConversation(true);
+    if (attachment && media.state.inbox.selected?.id === selected.id && pendingAttachment === attachment) clearAttachment();
+    if (local.last_error) $('composer-error').textContent = local.last_error;
+    await refreshConversation();
+    loadInbox();
   } catch (error) {
-    alert(error.message);
+    localReplies = localReplies.filter((item) => item !== local);
+    renderConversation();
+    if (!attachment && media.state.inbox.selected?.id === selected.id) $('conversation-reply-body').value = body;
+    $('composer-error').textContent = error.message;
   } finally {
     button.disabled = false;
-    button.textContent = 'Send reply';
+    button.textContent = 'Send';
+    $('conversation-reply-body').focus();
   }
 }
 
@@ -523,9 +629,95 @@ async function changeLeadStatus() {
       }
     });
     await loadInbox();
+    window.loadAlchemicLeads?.();
   } catch (error) {
     alert(error.message);
   }
+}
+
+async function toggleRecording() {
+  const button = $('composer-record-button');
+  if (recordingSession) {
+    const session = recordingSession;
+    recordingSession = null;
+    await session.stop();
+    button.textContent = '🎙';
+    button.classList.remove('recording');
+    clearTimeout(recordingTimer);
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $('composer-error').textContent = 'Voice recording is not available in this browser.';
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (window.MediaRecorder?.isTypeSupported('audio/mp4')) {
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/mp4' });
+      const chunks = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.start();
+      recordingSession = { stop: () => new Promise((resolve) => {
+        recorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          stageAttachment(new File(chunks, 'Voice message.m4a', { type: 'audio/mp4' }));
+          resolve();
+        };
+        recorder.stop();
+      }) };
+    } else {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) { stream.getTracks().forEach((track) => track.stop()); throw new Error('Voice recording is unavailable in this browser.'); }
+      const context = new AudioContext();
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(4096, 1, 1);
+      const samples = [];
+      let frames = 0;
+      processor.onaudioprocess = (event) => {
+        const sample = new Float32Array(event.inputBuffer.getChannelData(0));
+        samples.push(sample);
+        frames += sample.length;
+      };
+      source.connect(processor);
+      processor.connect(context.destination);
+      recordingSession = { stop: async () => {
+        processor.disconnect(); source.disconnect();
+        stream.getTracks().forEach((track) => track.stop());
+        await context.close();
+        const bytes = new ArrayBuffer(44 + frames * 2);
+        const view = new DataView(bytes);
+        const write = (at, value) => { for (let i = 0; i < value.length; i++) view.setUint8(at + i, value.charCodeAt(i)); };
+        write(0, 'RIFF'); view.setUint32(4, 36 + frames * 2, true); write(8, 'WAVE'); write(12, 'fmt ');
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+        view.setUint32(24, context.sampleRate, true); view.setUint32(28, context.sampleRate * 2, true);
+        view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, 'data'); view.setUint32(40, frames * 2, true);
+        let offset = 44;
+        for (const chunk of samples) for (const sample of chunk) {
+          const clipped = Math.max(-1, Math.min(1, sample));
+          view.setInt16(offset, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+          offset += 2;
+        }
+        stageAttachment(new File([bytes], 'Voice message.wav', { type: 'audio/wav' }));
+      } };
+    }
+    button.textContent = '■ Stop';
+    button.classList.add('recording');
+    $('composer-error').textContent = 'Recording… press Stop when finished.';
+    recordingTimer = setTimeout(() => { if (recordingSession) toggleRecording(); }, 30000);
+  } catch (error) {
+    $('composer-error').textContent = error.message || 'Microphone permission was denied.';
+  }
+}
+
+const emojis = ['😀', '😊', '😂', '❤️', '👍', '🙌', '🔥', '✨', '🎉', '🙏', '👋', '😍', '💯', '🤝', '💬', '✅'];
+function insertEmoji(value) {
+  const input = $('conversation-reply-body');
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  input.value = input.value.slice(0, start) + value + input.value.slice(end);
+  input.focus();
+  input.setSelectionRange(start + value.length, start + value.length);
+  $('composer-emoji-picker').hidden = true;
 }
 
 function bindUi() {
@@ -543,6 +735,35 @@ function bindUi() {
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);
   $('conversation-lead-status').addEventListener('change', changeLeadStatus);
+  $('conversation-back').addEventListener('click', () => document.querySelector('.inbox-layout').classList.remove('show-thread'));
+  $('conversation-messages').addEventListener('click', async (event) => {
+    const button = event.target.closest('.outbox-send-now');
+    if (!button) return;
+    button.disabled = true;
+    button.textContent = 'Sending…';
+    try {
+      const delivery = await media.api('/api/social/outbox/send', { method: 'POST', body: { outboxId: button.dataset.id } });
+      if (delivery.error) $('composer-error').textContent = delivery.error;
+      await refreshConversation();
+      loadInbox();
+    } catch (error) {
+      $('composer-error').textContent = error.message;
+      button.disabled = false;
+      button.textContent = 'Retry';
+    }
+  });
+  $('conversation-reply-body').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      $('conversation-reply-form').requestSubmit();
+    }
+  });
+  $('composer-file-button').addEventListener('click', () => $('composer-file-input').click());
+  $('composer-file-input').addEventListener('change', (event) => stageAttachment(event.target.files[0]));
+  $('composer-record-button').addEventListener('click', toggleRecording);
+  $('composer-emoji-picker').innerHTML = emojis.map((emoji) => `<button type="button" aria-label="Insert ${emoji}">${emoji}</button>`).join('');
+  $('composer-emoji-button').addEventListener('click', () => { $('composer-emoji-picker').hidden = !$('composer-emoji-picker').hidden; });
+  $('composer-emoji-picker').addEventListener('click', (event) => { if (event.target.closest('button')) insertEmoji(event.target.textContent); });
 
   document.querySelectorAll('.nav-item[data-view="inbox"]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -552,6 +773,14 @@ function bindUi() {
     });
   });
 }
+
+setInterval(() => {
+  if (!media?.state.auth.accessToken || document.hidden || media.state.view !== 'inbox') return;
+  if (media.state.inbox.selected) refreshConversation();
+}, 3500);
+setInterval(() => {
+  if (media?.state.auth.accessToken && !document.hidden && media.state.view === 'inbox') loadInbox();
+}, 10000);
 
 document.addEventListener('click', (event) => {
   const menu = $('user-menu-popover');

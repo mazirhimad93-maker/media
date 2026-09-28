@@ -1,5 +1,12 @@
 import { scopedPath, supabaseRequest } from './_shared.mjs';
 
+function outgoingMessage(job){
+  const attachment=job.metadata?.attachment;
+  return attachment
+    ? {attachment:{type:attachment.type,payload:{url:attachment.url}}}
+    : {text:job.body};
+}
+
 async function sendInstagram(account, contact, job, fetcher){
   const version=process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
   const endpoint=`https://graph.instagram.com/${version}/${encodeURIComponent(account.platform_account_id)}/messages`;
@@ -12,7 +19,7 @@ async function sendInstagram(account, contact, job, fetcher){
     if(!id) throw new Error('Recipient platform user ID is missing');
     recipient={id};
   }
-  const response=await fetcher(endpoint,{method:'POST',headers:{authorization:`Bearer ${account.access_token}`,'content-type':'application/json'},body:JSON.stringify({recipient,message:{text:job.body}})});
+  const response=await fetcher(endpoint,{method:'POST',headers:{authorization:`Bearer ${account.access_token}`,'content-type':'application/json'},body:JSON.stringify({recipient,message:outgoingMessage(job)})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||data?.error) throw new Error(data?.error?.message||`Instagram send failed (${response.status})`);
   return {messageId:data.message_id||null,raw:data};
@@ -33,7 +40,7 @@ async function sendFacebook(account, contact, job, fetcher){
     body:JSON.stringify({
       recipient:{id:recipientId},
       messaging_type:'RESPONSE',
-      message:{text:job.body}
+      message:outgoingMessage(job)
     })
   });
 
@@ -73,7 +80,7 @@ export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fe
     const existing=sent.messageId
       ? await db(`social_messages?account_id=eq.${encodeURIComponent(account.id)}&platform_message_id=eq.${encodeURIComponent(sent.messageId)}&select=id&limit=1`)
       : [];
-    if(!existing?.length) await db('social_messages',{method:'POST',headers:{Prefer:'return=minimal'},body:{conversation_id:job.conversation_id,account_id:job.account_id,contact_id:job.contact_id,platform_message_id:sent.messageId,direction:'outbound',sender_role:'account',message_type:job.reply_mode==='private_reply'?'private_reply':'text',body:job.body,delivery_status:'sent',sent_at:now,raw_json:sent.raw}});
+    if(!existing?.length) await db('social_messages',{method:'POST',headers:{Prefer:'return=minimal'},body:{conversation_id:job.conversation_id,account_id:job.account_id,contact_id:job.contact_id,platform_message_id:sent.messageId,direction:'outbound',sender_role:'account',message_type:job.metadata?.attachment?.type||(job.reply_mode==='private_reply'?'private_reply':'text'),body:job.body,media_url:job.metadata?.attachment?.url||null,delivery_status:'sent',sent_at:now,raw_json:sent.raw}});
   }catch(error){ console.error('Could not record delivered social message',error); }
   await db(`social_conversations?id=eq.${encodeURIComponent(job.conversation_id)}`,{method:'PATCH',body:{last_message_at:now,last_outbound_at:now,unread_count:0,updated_at:now}}).catch(console.error);
   await db('growth_events',{method:'POST',body:{event_type:'social_reply_sent',occurred_at:now,platform:account.platform,source:'manual_social_inbox',account_id:account.id,social_contact_id:contact.id,social_conversation_id:job.conversation_id,metadata:{outbox_id:job.id,reply_mode:job.reply_mode}}}).catch(()=>{});
