@@ -664,9 +664,11 @@ button{cursor:pointer}
 .content-platform-tab.active{background:#fff;color:#c2410c;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .content-range-wrap{display:flex;align-items:center;gap:8px}
 .content-range-wrap select{border:1px solid #d1d5db;background:#fff;border-radius:9px;padding:8px 11px;font-size:9px;color:#334155}
-.whop-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 14px}
-.whop-stat-card{box-shadow:none;border-color:#e7eaf0;border-radius:10px;padding:12px 14px}
-.whop-stat-card strong{font-size:19px}
+.whop-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.whop-stat-card{box-shadow:none;border-color:#e7eaf0;border-radius:10px;padding:9px 11px;min-height:62px;gap:9px}
+.whop-stat-card .stat-icon{width:32px;height:32px;border-radius:8px;font-size:11px;flex:0 0 auto}
+.whop-stat-card strong{font-size:17px;line-height:1.05}
+.whop-stat-card span{font-size:9px;margin-top:2px}
 .content-chart-shell{border:1px solid #e7eaf0;border-radius:12px;padding:14px 14px 4px;background:#fff}
 .content-chart-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
 .content-chart-total{display:flex;align-items:baseline;gap:7px;min-width:170px}
@@ -711,7 +713,7 @@ button{cursor:pointer}
   .content-analytics-toolbar,.content-chart-header{display:grid}
   .content-platform-tabs{overflow-x:auto;justify-content:flex-start}
   .content-range-wrap{justify-content:flex-start;flex-wrap:wrap}
-  .whop-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .whop-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
   .content-chart-controls{justify-content:flex-start}
   .analytics-platform-row{grid-template-columns:120px 1fr}
   .analytics-platform-meta{grid-column:1/-1;grid-template-columns:repeat(3,1fr);justify-content:start;text-align:left}
@@ -733,4 +735,13 @@ button{cursor:pointer}
   .published-post-card{width:100vw;max-height:100vh;height:100vh;border-radius:0}
   .published-post-layout{grid-template-columns:1fr}
   .published-post-embed{height:62vh}
+}
+
+
+@media(max-width:480px){
+  .whop-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:8px}
+  .whop-stat-card{padding:8px 9px;min-height:56px}
+  .whop-stat-card .stat-icon{width:28px;height:28px}
+  .whop-stat-card strong{font-size:15px}
+  .whop-stat-card span{font-size:8px}
 }
