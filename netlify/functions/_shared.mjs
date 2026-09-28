@@ -192,8 +192,15 @@ export async function resolveCampaignPool({ campaignId, requestedPoolId, workspa
 
 export async function upsertConnectedAccount(account, assignment = {}) {
   const workspaceId = assignment.workspaceId || account.workspace_id || null;
-  const existingRows = await supabaseRequest(scopedPath(`content_accounts?platform=eq.${encodeURIComponent(account.platform)}&platform_account_id=eq.${encodeURIComponent(account.platform_account_id)}&select=*&limit=1`, workspaceId));
+  const existingRows = await supabaseRequest(
+    `content_accounts?platform=eq.${encodeURIComponent(account.platform)}&platform_account_id=eq.${encodeURIComponent(account.platform_account_id)}&select=*&limit=1`
+  );
   const existing = existingRows?.[0] || {};
+  if (workspaceId && existing.workspace_id && existing.workspace_id !== workspaceId) {
+    const error = new Error('This channel is already connected to another Media workspace.');
+    error.status = 409;
+    throw error;
+  }
   const payload = {
     ...account,
     ...(workspaceId?{workspace_id:workspaceId}:{}),
@@ -204,8 +211,7 @@ export async function upsertConnectedAccount(account, assignment = {}) {
   };
   if (!payload.refresh_token && existing.refresh_token) payload.refresh_token = existing.refresh_token;
 
-  const conflict = workspaceId ? 'workspace_id,platform,platform_account_id' : 'platform,platform_account_id';
-  const rows = await supabaseRequest(`content_accounts?on_conflict=${encodeURIComponent(conflict)}`, {
+  const rows = await supabaseRequest('content_accounts?on_conflict=platform,platform_account_id', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
     body: payload,
