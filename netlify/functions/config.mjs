@@ -1,7 +1,8 @@
-import { callbacks, jsonResponse, providerConfig, publicError } from './_shared.mjs';
+import { callbacks, jsonResponse, providerConfig, publicError, requireUser } from './_shared.mjs';
 
 export default async (request) => {
   try {
+    await requireUser(request);
     return jsonResponse({
       providers:providerConfig(),
       callbacks:callbacks(request),
