@@ -45,6 +45,10 @@
   to = "/.netlify/functions/inbox-activate"
   status = 200
 [[redirects]]
+  from = "/api/channels/inbox/sync"
+  to = "/.netlify/functions/inbox-sync"
+  status = 200
+[[redirects]]
   from = "/api/config"
   to = "/.netlify/functions/config"
   status = 200
