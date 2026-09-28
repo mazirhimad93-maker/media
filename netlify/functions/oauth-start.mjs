@@ -33,7 +33,7 @@ export default async (request) => {
         client_id: process.env.INSTAGRAM_APP_ID.trim(),
         redirect_uri: cb.instagram,
         response_type: 'code',
-        scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages',
+        scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_insights',
         state,
       });
       authorizationUrl = `https://www.instagram.com/oauth/authorize?${params}`;
