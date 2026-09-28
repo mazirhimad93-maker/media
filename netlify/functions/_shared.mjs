@@ -265,3 +265,155 @@ export function successPage({ title, message, accounts = [] }) {
 }
 
 export const hashIp = (ip) => crypto.createHash('sha256').update(`${process.env.CLICK_HASH_SALT || 'alchemic'}:${ip || ''}`).digest('hex');
+
+
+// -----------------------------------------------------------------------------
+// Supabase Auth + Alchemic Media workspace sessions
+// -----------------------------------------------------------------------------
+export function readCookie(request, name) {
+  const raw = request.headers.get('cookie') || '';
+  for (const part of raw.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('=') || '');
+  }
+  return '';
+}
+
+export function refreshCookie(value, maxAge = 60 * 60 * 24 * 30) {
+  const secure = 'Secure';
+  return `alchemic_refresh=${encodeURIComponent(value || '')}; Path=/; HttpOnly; ${secure}; SameSite=Lax; Max-Age=${Math.max(0, Number(maxAge || 0))}`;
+}
+
+async function authApi(path, { method = 'GET', body, accessToken } = {}) {
+  const base = required('SUPABASE_URL').replace(/\/$/, '');
+  const key = required('SUPABASE_SERVICE_ROLE_KEY');
+  const headers = {
+    apikey: key,
+    'content-type': 'application/json',
+  };
+  if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+
+  const response = await fetch(`${base}/auth/v1/${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+  if (!response.ok) {
+    const error = new Error(
+      data?.msg ||
+      data?.message ||
+      data?.error_description ||
+      data?.error ||
+      `Supabase Auth failed (${response.status})`
+    );
+    error.status = response.status;
+    error.details = data;
+    throw error;
+  }
+  return data;
+}
+
+export async function authPassword(email, password) {
+  return authApi('token?grant_type=password', {
+    method: 'POST',
+    body: { email, password },
+  });
+}
+
+export async function authSignup(email, password, metadata = {}) {
+  return authApi('signup', {
+    method: 'POST',
+    body: { email, password, data: metadata },
+  });
+}
+
+export async function authRefresh(refreshToken) {
+  return authApi('token?grant_type=refresh_token', {
+    method: 'POST',
+    body: { refresh_token: refreshToken },
+  });
+}
+
+export async function authUser(accessToken) {
+  return authApi('user', { accessToken });
+}
+
+export async function ensureAppUser(user, { fullName = null, touchLogin = false } = {}) {
+  if (!user?.id) throw Object.assign(new Error('Authenticated user is missing an id'), { status: 401 });
+
+  const existing = await supabaseRequest(
+    `app_users?user_id=eq.${encodeURIComponent(user.id)}&select=user_id,email,full_name,role,status,created_at,updated_at,last_login_at&limit=1`
+  ).catch(() => []);
+
+  const now = new Date().toISOString();
+
+  if (existing?.[0]) {
+    const patch = {};
+    if (user.email && user.email !== existing[0].email) patch.email = user.email;
+    if (fullName && fullName !== existing[0].full_name) patch.full_name = fullName;
+    if (touchLogin) patch.last_login_at = now;
+    if (Object.keys(patch).length) {
+      patch.updated_at = now;
+      const rows = await supabaseRequest(
+        `app_users?user_id=eq.${encodeURIComponent(user.id)}`,
+        { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: patch }
+      );
+      return rows?.[0] || { ...existing[0], ...patch };
+    }
+    return existing[0];
+  }
+
+  const any = await supabaseRequest('app_users?select=user_id&limit=1').catch(() => []);
+  const role = any?.length ? 'member' : 'owner';
+  const rows = await supabaseRequest('app_users', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: {
+      user_id: user.id,
+      email: user.email || null,
+      full_name: fullName || user.user_metadata?.full_name || user.user_metadata?.name || null,
+      role,
+      status: 'active',
+      last_login_at: touchLogin ? now : null,
+      updated_at: now,
+    },
+  });
+  return rows?.[0] || null;
+}
+
+export async function requireUser(request, allowedRoles = null) {
+  const auth = request.headers.get('authorization') || '';
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match?.[1]) {
+    const error = new Error('Authentication required');
+    error.status = 401;
+    throw error;
+  }
+
+  const user = await authUser(match[1]);
+  const profile = await ensureAppUser(user, { touchLogin: false });
+
+  if (!profile || profile.status !== 'active') {
+    const error = new Error('This Alchemic Media account is disabled');
+    error.status = 403;
+    throw error;
+  }
+
+  if (Array.isArray(allowedRoles) && allowedRoles.length && !allowedRoles.includes(profile.role)) {
+    const error = new Error('You do not have permission to perform this action');
+    error.status = 403;
+    throw error;
+  }
+
+  return { user, profile, accessToken: match[1] };
+}
+
+export const registrationCodeMatches = (value) => {
+  const configured = process.env.MEDIA_REGISTRATION_CODE?.trim() || 'alchemic2026';
+  return safeEqual(String(value || ''), configured);
+};
