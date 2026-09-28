@@ -402,6 +402,28 @@ begin
 end
 $triggers$;
 
+-- A person may legitimately message channels owned by different workspaces.
+-- Keep those CRM/contact records isolated per workspace.
+do $contact_unique$
+declare r record;
+begin
+  if to_regclass('public.social_contacts') is not null then
+    for r in
+      select conname
+      from pg_constraint
+      where conrelid='public.social_contacts'::regclass
+        and contype='u'
+        and pg_get_constraintdef(oid) ilike '%(platform, platform_user_id)%'
+    loop
+      execute format('alter table public.social_contacts drop constraint %I',r.conname);
+    end loop;
+  end if;
+end
+$contact_unique$;
+
+create unique index if not exists social_contacts_workspace_platform_user_uidx
+on public.social_contacts(workspace_id,platform,platform_user_id);
+
 create index if not exists media_workspace_members_user_idx on public.media_workspace_members(user_id,status);
 create index if not exists content_campaigns_workspace_idx on public.content_campaigns(workspace_id) where workspace_id is not null;
 create index if not exists distribution_campaigns_workspace_idx on public.distribution_campaigns(workspace_id) where workspace_id is not null;
