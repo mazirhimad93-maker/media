@@ -136,6 +136,9 @@ document.addEventListener('click',e=>{if(!e.target.closest('.content-toolbar')){
 const paint=setInterval(()=>{if(state.content?.rows){render();clearInterval(paint)}},300);
 document.querySelector('.nav-item[data-view="content"]')?.addEventListener('click',()=>setTimeout(render,0));
 document.querySelectorAll('[data-jump="content"]').forEach(n=>n.addEventListener('click',()=>setTimeout(render,0)));
+document.addEventListener('click',event=>{
+  if(event.target.closest('.campaign-content')) setTimeout(render,20);
+});
 $('refresh-all')?.addEventListener('click',()=>setTimeout(render,1200));
 
 window.__alchemicContentTable={render,filteredRows};
