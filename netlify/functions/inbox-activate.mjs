@@ -20,7 +20,7 @@ async function subscribeInstagram(account){
     'https://graph.instagram.com/'+versionInstagram()+'/'+encodeURIComponent(account.platform_account_id)+'/subscribed_apps'
   );
   endpoint.search=new URLSearchParams({
-    subscribed_fields:'messages,messaging_postbacks',
+    subscribed_fields:'messages,messaging_postbacks,comments',
     access_token:account.access_token
   });
   const response=await fetch(endpoint,{method:'POST'});
