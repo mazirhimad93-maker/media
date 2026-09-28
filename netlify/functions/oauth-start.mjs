@@ -24,7 +24,7 @@ export default async (request) => {
         client_id: process.env.GOOGLE_CLIENT_ID.trim(),
         redirect_uri: cb.youtube,
         response_type: 'code',
-        scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+        scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly',
         access_type: 'offline', prompt: 'consent select_account', include_granted_scopes: 'true', state,
       });
       authorizationUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
