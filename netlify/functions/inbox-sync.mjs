@@ -74,7 +74,8 @@ async function facebookConversations(account){
 }
 
 async function upsertContact(account,party,workspaceId){
-  const rows=await supabaseRequest('social_contacts?on_conflict=platform,platform_user_id',{
+  const conflict=workspaceId?'workspace_id,platform,platform_user_id':'platform,platform_user_id';
+  const rows=await supabaseRequest('social_contacts?on_conflict='+encodeURIComponent(conflict),{
     method:'POST',
     headers:{Prefer:'resolution=merge-duplicates,return=representation'},
     body:{
