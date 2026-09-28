@@ -4,6 +4,35 @@ const nowIso=()=>new Date().toISOString();
 const num=v=>Math.max(0,Number(v||0));
 const ymd=value=>new Date(value).toISOString().slice(0,10);
 
+const normalizedUrl=value=>{
+  try{
+    const u=new URL(String(value||''));
+    u.search='';
+    u.hash='';
+    return (u.origin+u.pathname).replace(/\/+$/,'').toLowerCase();
+  }catch{
+    return String(value||'').replace(/[?#].*$/,'').replace(/\/+$/,'').toLowerCase();
+  }
+};
+
+function youtubeVideoId(post){
+  const raw=String(post?.external_post_id||'').trim();
+  if(/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+  const value=String(post?.external_post_url||raw||'').trim();
+  try{
+    const u=new URL(value);
+    if(u.hostname.includes('youtu.be')) return u.pathname.split('/').filter(Boolean)[0]||raw;
+    if(u.searchParams.get('v')) return u.searchParams.get('v');
+    const parts=u.pathname.split('/').filter(Boolean);
+    const shorts=parts.indexOf('shorts');
+    if(shorts>=0&&parts[shorts+1]) return parts[shorts+1];
+    const embed=parts.indexOf('embed');
+    if(embed>=0&&parts[embed+1]) return parts[embed+1];
+  }catch{}
+  const m=value.match(/(?:shorts\/|youtu\.be\/|v=)([A-Za-z0-9_-]{11})/);
+  return m?.[1]||raw;
+}
+
 async function refreshYouTube(account){
   if(account?.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
   if(!account?.refresh_token) throw new Error('YouTube refresh token missing');
@@ -110,7 +139,7 @@ async function youtubeDailyAnalytics(items,workspaceId){
       endDate,
       metrics:'views,estimatedMinutesWatched,averageViewDuration',
       dimensions:'day,video',
-      filters:'video=='+batch.map(x=>x.post.external_post_id).join(','),
+      filters:'video=='+batch.map(x=>youtubeVideoId(x.post)).join(','),
       sort:'day'
     });
 
@@ -151,20 +180,57 @@ async function youtubeDailyAnalytics(items,workspaceId){
   return {rows,status:'ok',account_id:account.id};
 }
 
-async function instagramMetrics(post,account){
-  if(!account.access_token) throw new Error('Instagram access token missing');
+async function instagramBasic(mediaId,account){
   const version=process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
-  const base='https://graph.instagram.com/'+version+'/'+encodeURIComponent(post.external_post_id);
-
-  const basicUrl=new URL(base);
-  basicUrl.search=new URLSearchParams({
-    fields:'like_count,comments_count,media_type,media_product_type',
+  const url=new URL('https://graph.instagram.com/'+version+'/'+encodeURIComponent(mediaId));
+  url.search=new URLSearchParams({
+    fields:'id,permalink,like_count,comments_count,media_type,media_product_type',
     access_token:account.access_token
   });
+  const response=await fetch(url);
+  const data=await response.json().catch(()=>({}));
+  return {response,data};
+}
 
-  const basicResponse=await fetch(basicUrl);
-  const basic=await basicResponse.json().catch(()=>({}));
-  if(!basicResponse.ok) throw new Error(basic.error?.message||'Instagram media lookup failed');
+async function resolveInstagramMedia(post,account){
+  if(!account.access_token) throw new Error('Instagram access token missing');
+  const direct=String(post.external_post_id||'').trim();
+
+  if(direct){
+    const result=await instagramBasic(direct,account);
+    if(result.response.ok) return result.data;
+  }
+
+  if(!post.external_post_url) throw new Error('Instagram media ID is invalid and no published URL is available');
+
+  const version=process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
+  let next='https://graph.instagram.com/'+version+'/'+encodeURIComponent(account.platform_account_id)+'/media?'+new URLSearchParams({
+    fields:'id,permalink,like_count,comments_count,media_type,media_product_type',
+    limit:'100',
+    access_token:account.access_token
+  }).toString();
+
+  const target=normalizedUrl(post.external_post_url);
+  let pages=0;
+  while(next&&pages<5){
+    const response=await fetch(next);
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(data.error?.message||'Instagram media list failed');
+
+    const match=(data.data||[]).find(media=>normalizedUrl(media.permalink)===target);
+    if(match) return match;
+
+    next=data.paging?.next||null;
+    pages++;
+  }
+
+  throw new Error('Instagram published media could not be matched to its live permalink');
+}
+
+async function instagramMetrics(post,account){
+  const basic=await resolveInstagramMedia(post,account);
+  const mediaId=basic.id||post.external_post_id;
+  const version=process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
 
   const out={
     views:0,
@@ -172,22 +238,33 @@ async function instagramMetrics(post,account){
     comments:num(basic.comments_count),
     shares:0,
     saves:0,
-    raw_json:{basic,insights:{}}
+    raw_json:{resolved_media_id:mediaId,basic,insights:{}}
   };
 
-  for(const metric of ['views','plays','saved','shares']){
-    try{
-      const u=new URL(base+'/insights');
-      u.search=new URLSearchParams({metric,access_token:account.access_token});
-      const response=await fetch(u);
-      const data=await response.json().catch(()=>({}));
-      if(!response.ok) continue;
-      const value=data.data?.[0]?.values?.[0]?.value ?? data.data?.[0]?.total_value?.value ?? 0;
-      out.raw_json.insights[metric]=data;
-      if((metric==='views'||metric==='plays') && !out.views) out.views=num(value);
-      if(metric==='saved') out.saves=num(value);
-      if(metric==='shares') out.shares=num(value);
-    }catch{}
+  const hasInsights=String(account.scope||'').includes('instagram_business_manage_insights');
+  if(!hasInsights){
+    out.raw_json.insights_status='permission_required';
+    return out;
+  }
+
+  const u=new URL('https://graph.instagram.com/'+version+'/'+encodeURIComponent(mediaId)+'/insights');
+  u.search=new URLSearchParams({
+    metric:'views,plays,saved,shares,total_interactions',
+    access_token:account.access_token
+  });
+
+  const response=await fetch(u);
+  const data=await response.json().catch(()=>({}));
+  if(response.ok){
+    for(const metric of data.data||[]){
+      const value=metric.values?.[0]?.value ?? metric.total_value?.value ?? 0;
+      out.raw_json.insights[metric.name]=metric;
+      if((metric.name==='views'||metric.name==='plays')&&!out.views) out.views=num(value);
+      if(metric.name==='saved') out.saves=num(value);
+      if(metric.name==='shares') out.shares=num(value);
+    }
+  }else{
+    out.raw_json.insights_error=data.error||data;
   }
 
   return out;
@@ -345,9 +422,9 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
       const credential=await youtubePublicCredential(accounts);
       for(let i=0;i<youtube.length;i+=50){
         const batch=youtube.slice(i,i+50);
-        const stats=await youtubeBatchStatistics(batch.map(x=>x.post.external_post_id),credential);
+        const stats=await youtubeBatchStatistics(batch.map(x=>youtubeVideoId(x.post)),credential);
         for(const item of batch){
-          const m=stats.get(String(item.post.external_post_id));
+          const m=stats.get(String(youtubeVideoId(item.post)));
           if(!m){
             results.push({
               history_id:item.h.id,
