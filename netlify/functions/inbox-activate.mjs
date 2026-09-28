@@ -1,4 +1,4 @@
-import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { callbacks, jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const versionInstagram=()=>process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
 const versionFacebook=()=>process.env.FACEBOOK_API_VERSION?.trim()||'v26.0';
@@ -81,6 +81,15 @@ export default async request=>{
       )).catch(()=>[]);
 
       return jsonResponse({
+        webhook:{
+          callback_url:callbacks(request).metaWebhook,
+          verify_token_configured:Boolean(process.env.META_WEBHOOK_VERIFY_TOKEN?.trim()),
+          app_secret_configured:Boolean(
+            process.env.INSTAGRAM_APP_SECRET?.trim() ||
+            process.env.FACEBOOK_APP_SECRET?.trim() ||
+            process.env.META_APP_SECRET?.trim()
+          )
+        },
         accounts:(accounts||[]).map(account=>{
           const p=permissionState(account);
           return {
