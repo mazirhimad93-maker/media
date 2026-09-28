@@ -1,9 +1,8 @@
-import { callbacks, clampInt, jsonResponse, providerConfig, publicError, requireAdmin, signOAuthState } from './_shared.mjs';
+import { callbacks, clampInt, jsonResponse, providerConfig, publicError, requireUser, signOAuthState } from './_shared.mjs';
 
 export default async (request) => {
   try {
-    const mediaPassword = request.headers.get('x-media-password') || '';
-    if (mediaPassword !== 'alchemic2026') requireAdmin(request);
+    const { user } = await requireUser(request);
     const url = new URL(request.url);
     const provider = url.searchParams.get('provider');
     if (!['youtube','instagram'].includes(provider)) throw Object.assign(new Error('Unsupported OAuth provider'), { status: 400 });
@@ -15,6 +14,7 @@ export default async (request) => {
       dailyLimit: clampInt(url.searchParams.get('dailyLimit'), 0, 1000, 4),
       weeklyLimit: clampInt(url.searchParams.get('weeklyLimit'), 0, 7000, 28),
       minGapMinutes: clampInt(url.searchParams.get('minGapMinutes'), 0, 10080, 60),
+      connectedByUserId: user.id,
     });
     const cb = callbacks(request);
     let authorizationUrl;
