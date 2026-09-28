@@ -1,11 +1,4 @@
-import { jsonResponse, publicError, requireAdmin, supabaseRequest } from './_shared.mjs';
-
-const TEMP_PASSWORD='alchemic2026';
-
-function allow(request){
-  if((request.headers.get('x-media-password')||'')===TEMP_PASSWORD) return;
-  requireAdmin(request);
-}
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 async function refreshYouTube(account){
   if(account.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
@@ -78,7 +71,7 @@ async function instagramMetrics(post,account){
 
 export default async request=>{
   try{
-    allow(request);
+    await requireUser(request);
     if(request.method!=='POST') throw Object.assign(new Error('POST required'),{status:405});
     const input=await request.json().catch(()=>({}));
     const limit=Math.min(100,Math.max(1,Number(input.limit||50)));
