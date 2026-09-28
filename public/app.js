@@ -72,7 +72,7 @@ async function api(path,options={}){
   if(response.status===401 && !retried && !path.startsWith('/api/auth/')){
     const restored=await restoreSession();
     if(restored) return api(path,{...options,__retried:true});
-    showAuth('Your session expired. Sign in again.');
+    if(window.showAlchemicAuth) window.showAlchemicAuth('Your session expired. Sign in again.');
   }
   if(!response.ok) throw new Error(payload.error||`Request failed (${response.status})`);
   return payload;
@@ -1292,4 +1292,15 @@ setInterval(()=>{
 
 const initialView=new URLSearchParams(window.location.search).get('view');
 if(['overview','clipping','campaigns','content','inbox','leads','accounts'].includes(initialView)) setView(initialView);
-load();
+
+window.__alchemic={
+  state,
+  api,
+  load,
+  setView,
+  esc,
+  fmt,
+  platformLabel,
+  dateShort
+};
+window.dispatchEvent(new Event('alchemic-ready'));
