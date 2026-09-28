@@ -1,4 +1,4 @@
-import { jsonResponse, supabaseRequest, verifyMetaSignature } from './_shared.mjs';
+import { jsonResponse, scopedPath, supabaseRequest, verifyMetaSignature } from './_shared.mjs';
 
 const textResponse=(body,status=200)=>new Response(String(body),{status,headers:{'content-type':'text/plain; charset=utf-8'}});
 
@@ -222,6 +222,35 @@ async function processMessaging(entry,event){
   return {processed:true,type:'message'};
 }
 
+// A receipt is evidence of a read only when it belongs to this contact and
+// identifies an outbound message. An inbound mid must never turn our replies
+// into "seen" messages.
+export async function applyReadReceipt(account, event, db = supabaseRequest) {
+  const senderId = String(event.sender?.id || '');
+  if (!senderId || !event.read || String(event.recipient?.id || '') !== String(account.platform_account_id)) return { ignored: 'invalid_receipt' };
+  const contacts = await db(scopedPath(
+    `social_contacts?platform=eq.${encodeURIComponent(account.platform)}&platform_user_id=eq.${encodeURIComponent(senderId)}&select=id&limit=1`,
+    account.workspace_id
+  ));
+  const contactId = contacts?.[0]?.id;
+  if (!contactId) return { ignored: 'unknown_contact' };
+  const base = `social_messages?account_id=eq.${encodeURIComponent(account.id)}&contact_id=eq.${encodeURIComponent(contactId)}&direction=eq.outbound`;
+  let query;
+  if (account.platform === 'instagram_reels' && event.read.mid) {
+    query = `${base}&platform_message_id=eq.${encodeURIComponent(event.read.mid)}&select=id&limit=1`;
+  } else if (account.platform === 'facebook_page' && Number.isFinite(Number(event.read.watermark))) {
+    const watermark = new Date(Number(event.read.watermark)).toISOString();
+    query = `${base}&sent_at=lte.${encodeURIComponent(watermark)}&select=id&limit=500`;
+  } else return { ignored: 'unsupported_receipt' };
+  const messages = await db(scopedPath(query, account.workspace_id));
+  if (!messages?.length) return { ignored: 'no_outbound_match' };
+  const ids = messages.map((message) => message.id);
+  await db(scopedPath(`${base}&id=in.(${ids.map(encodeURIComponent).join(',')})`, account.workspace_id), {
+    method: 'PATCH', body: { delivery_status: 'read' }
+  });
+  return { processed: true, type: 'read', count: ids.length };
+}
+
 async function processComment(entry,change){
   const value=change.value||{};
   const account=await accountFor(String(entry.id||''));
@@ -291,7 +320,7 @@ export default async (request)=>{
   try{
     for(const entry of payload.entry||[]){
       for(const event of entry.messaging||[]){
-        const key=event.message?.mid||event.postback?.mid||(entry.id+':'+(event.timestamp||Date.now()));
+        const key=event.message?.mid||event.postback?.mid||event.read?.mid||event.read?.watermark||(entry.id+':'+(event.timestamp||Date.now()));
         const account=await accountFor(String(entry.id||event.recipient?.id||'')).catch(()=>null);
         const provider=account?.platform==='facebook_page'?'facebook':'instagram';
 
@@ -301,14 +330,14 @@ export default async (request)=>{
             provider,
             event_key:key,
             account_platform_id:String(entry.id||''),
-            event_type:'messaging',
+            event_type:event.read?'read':'messaging',
             payload:event,
             status:'received',
             ...(account?.workspace_id?{workspace_id:account.workspace_id}:{})
           }
         }).catch(()=>{});
 
-        results.push(await processMessaging(entry,event));
+        results.push(event.read ? (account ? await applyReadReceipt(account,event) : {ignored:'unknown_account'}) : await processMessaging(entry,event));
       }
 
       for(const change of entry.changes||[]){

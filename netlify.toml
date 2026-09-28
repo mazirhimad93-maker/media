@@ -117,6 +117,10 @@
   to = "/.netlify/functions/social-media-upload"
   status = 200
 [[redirects]]
+  from = "/api/social/media/file"
+  to = "/.netlify/functions/social-media-file"
+  status = 200
+[[redirects]]
   from = "/api/social/lead-status"
   to = "/.netlify/functions/lead-status"
   status = 200

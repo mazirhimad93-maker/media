@@ -48,7 +48,7 @@ async function managedPages(userToken) {
 async function subscribePage(pageId, pageToken) {
   const url = new URL(`https://graph.facebook.com/${graphVersion()}/${encodeURIComponent(pageId)}/subscribed_apps`);
   url.search = new URLSearchParams({
-    subscribed_fields:'messages,messaging_postbacks',
+    subscribed_fields:'messages,messaging_postbacks,message_reads',
     access_token:pageToken,
   });
   const response = await fetch(url, { method:'POST' });
@@ -115,7 +115,8 @@ export default async (request) => {
             publish:false,
             messages_read:true,
             messages_send:true,
-            webhooks:subscription.ok
+            webhooks:subscription.ok,
+            read_receipts_subscribed:subscription.ok
           },
           settings_json:{},
           metadata:{
