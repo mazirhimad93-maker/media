@@ -159,15 +159,15 @@ export async function rpc(name, body = {}) {
   });
 }
 
-export async function resolveCampaignPool({ campaignId, requestedPoolId }) {
+export async function resolveCampaignPool({ campaignId, requestedPoolId, workspaceId = null }) {
   if (!campaignId) return { campaign: null, pool: null };
-  const campaigns = await supabaseRequest(`content_campaigns?id=eq.${encodeURIComponent(campaignId)}&select=id,name,status,distribution_pool_id&limit=1`);
+  const campaigns = await supabaseRequest(scopedPath(`content_campaigns?id=eq.${encodeURIComponent(campaignId)}&select=id,name,status,distribution_pool_id,workspace_id&limit=1`, workspaceId));
   const campaign = campaigns?.[0];
   if (!campaign) throw new Error('The selected content campaign does not exist');
 
   let poolId = requestedPoolId || campaign.distribution_pool_id;
   if (poolId) {
-    const pools = await supabaseRequest(`content_distribution_pools?id=eq.${encodeURIComponent(poolId)}&status=eq.active&select=id,name&limit=1`);
+    const pools = await supabaseRequest(scopedPath(`content_distribution_pools?id=eq.${encodeURIComponent(poolId)}&status=eq.active&select=id,name,workspace_id&limit=1`, workspaceId));
     if (!pools?.[0]) throw new Error('The selected distribution pool is not active');
     if (campaign.distribution_pool_id !== poolId) {
       await supabaseRequest(`content_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, {
@@ -181,7 +181,7 @@ export async function resolveCampaignPool({ campaignId, requestedPoolId }) {
   const created = await supabaseRequest('content_distribution_pools', {
     method: 'POST',
     headers: { Prefer: 'return=representation' },
-    body: { name: `${campaign.name} Channels`, slug: `${baseSlug}-${campaign.id.slice(0, 8)}`, strict_isolation: true, distribution_mode: 'rotation', status: 'active' },
+    body: { name: `${campaign.name} Channels`, slug: `${baseSlug}-${campaign.id.slice(0, 8)}`, strict_isolation: true, distribution_mode: 'rotation', status: 'active', ...(workspaceId?{workspace_id:workspaceId}:{}) },
   });
   const pool = created?.[0];
   await supabaseRequest(`content_campaigns?id=eq.${encodeURIComponent(campaign.id)}`, {
@@ -191,10 +191,12 @@ export async function resolveCampaignPool({ campaignId, requestedPoolId }) {
 }
 
 export async function upsertConnectedAccount(account, assignment = {}) {
-  const existingRows = await supabaseRequest(`content_accounts?platform=eq.${encodeURIComponent(account.platform)}&platform_account_id=eq.${encodeURIComponent(account.platform_account_id)}&select=*&limit=1`);
+  const workspaceId = assignment.workspaceId || account.workspace_id || null;
+  const existingRows = await supabaseRequest(scopedPath(`content_accounts?platform=eq.${encodeURIComponent(account.platform)}&platform_account_id=eq.${encodeURIComponent(account.platform_account_id)}&select=*&limit=1`, workspaceId));
   const existing = existingRows?.[0] || {};
   const payload = {
     ...account,
+    ...(workspaceId?{workspace_id:workspaceId}:{}),
     settings_json: { ...(existing.settings_json || {}), ...(account.settings_json || {}) },
     metadata: { ...(existing.metadata || {}), ...(account.metadata || {}), connector_managed: true },
     capabilities_json: { ...(existing.capabilities_json || {}), ...(account.capabilities_json || {}) },
@@ -202,7 +204,8 @@ export async function upsertConnectedAccount(account, assignment = {}) {
   };
   if (!payload.refresh_token && existing.refresh_token) payload.refresh_token = existing.refresh_token;
 
-  const rows = await supabaseRequest('content_accounts?on_conflict=platform,platform_account_id', {
+  const conflict = workspaceId ? 'workspace_id,platform,platform_account_id' : 'platform,platform_account_id';
+  const rows = await supabaseRequest(`content_accounts?on_conflict=${encodeURIComponent(conflict)}`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
     body: payload,
@@ -210,7 +213,7 @@ export async function upsertConnectedAccount(account, assignment = {}) {
   const saved = rows?.[0];
   if (!saved) throw new Error('Supabase did not return the connected account');
 
-  const { campaign, pool } = await resolveCampaignPool(assignment);
+  const { campaign, pool } = await resolveCampaignPool({ ...assignment, workspaceId });
   if (pool) {
     await supabaseRequest(`content_distribution_pool_accounts?account_id=eq.${encodeURIComponent(saved.id)}&is_active=eq.true`, {
       method: 'PATCH', body: { is_active: false, updated_at: new Date().toISOString() },
@@ -218,7 +221,7 @@ export async function upsertConnectedAccount(account, assignment = {}) {
     await supabaseRequest('content_distribution_pool_accounts?on_conflict=pool_id,account_id', {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: { pool_id: pool.id, account_id: saved.id, priority: 100, weight: 1, is_active: true, updated_at: new Date().toISOString() },
+      body: { pool_id: pool.id, account_id: saved.id, priority: 100, weight: 1, is_active: true, updated_at: new Date().toISOString(), ...(workspaceId?{workspace_id:workspaceId}:{}) },
     });
   }
 
@@ -232,6 +235,7 @@ export async function upsertConnectedAccount(account, assignment = {}) {
       event_type: 'account_connected',
       message: `${saved.username || saved.platform_account_id} connected through OAuth`,
       response_json: { pool_id: pool?.id || null, provider: assignment.provider || account.metadata?.oauth_provider || null },
+      ...(workspaceId?{workspace_id:workspaceId}:{})
     },
   }).catch(() => {});
   return { saved, campaign, pool };
@@ -241,6 +245,7 @@ export const assignmentFromState = (state) => ({
   campaignId: state.campaignId || null,
   requestedPoolId: state.poolId || null,
   provider: state.provider,
+  workspaceId: state.workspaceId || null,
 });
 
 export function successPage({ title, message, accounts = [] }) {
@@ -357,7 +362,7 @@ export async function ensureAppUser(user, { fullName = null, touchLogin = false 
   if (!user?.id) throw Object.assign(new Error('Authenticated user is missing an id'), { status: 401 });
 
   const existing = await supabaseRequest(
-    `app_users?user_id=eq.${encodeURIComponent(user.id)}&select=user_id,email,full_name,role,status,created_at,updated_at,last_login_at&limit=1`
+    `app_users?user_id=eq.${encodeURIComponent(user.id)}&select=user_id,email,full_name,role,status,default_workspace_id,created_at,updated_at,last_login_at&limit=1`
   ).catch(() => []);
 
   const now = new Date().toISOString();
@@ -423,6 +428,108 @@ export async function ensureAppUser(user, { fullName = null, touchLogin = false 
   });
   return rows?.[0] || null;
 }
+
+export async function ensureWorkspaceForProfile(user, profile) {
+  try {
+    let workspaceId = profile?.default_workspace_id || null;
+
+    if (workspaceId) {
+      const rows = await supabaseRequest(
+        `media_workspaces?id=eq.${encodeURIComponent(workspaceId)}&status=eq.active&select=id,name,slug,owner_user_id,status,created_at&limit=1`
+      ).catch(() => []);
+      if (rows?.[0]) {
+        return {
+          workspace: rows[0],
+          membership: { workspace_id: rows[0].id, user_id: user.id, role: profile?.role || 'member', status: 'active' }
+        };
+      }
+    }
+
+    const memberships = await supabaseRequest(
+      `media_workspace_members?user_id=eq.${encodeURIComponent(user.id)}&status=eq.active&select=workspace_id,user_id,role,status,created_at&order=created_at.asc&limit=1`
+    ).catch(() => []);
+
+    if (memberships?.[0]) {
+      workspaceId = memberships[0].workspace_id;
+      const rows = await supabaseRequest(
+        `media_workspaces?id=eq.${encodeURIComponent(workspaceId)}&status=eq.active&select=id,name,slug,owner_user_id,status,created_at&limit=1`
+      ).catch(() => []);
+      if (rows?.[0]) {
+        await supabaseRequest(
+          `app_users?user_id=eq.${encodeURIComponent(user.id)}`,
+          { method:'PATCH', body:{ default_workspace_id:workspaceId, updated_at:new Date().toISOString() } }
+        ).catch(() => {});
+        return { workspace: rows[0], membership: memberships[0] };
+      }
+    }
+
+    // If workspace tables have not been migrated yet, keep the current app usable.
+    const probe = await supabaseRequest('media_workspaces?select=id&limit=1').catch(() => null);
+    if (probe === null) return { workspace:null, membership:null };
+
+    const baseName = String(profile?.full_name || user.email?.split('@')[0] || 'Media').trim() || 'Media';
+    const slugBase = baseName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48) || 'workspace';
+    const slug = `${slugBase}-${String(user.id).slice(0,8)}`;
+
+    const created = await supabaseRequest('media_workspaces',{
+      method:'POST',
+      headers:{Prefer:'return=representation'},
+      body:{
+        name:`${baseName} Workspace`,
+        slug,
+        owner_user_id:user.id,
+        status:'active'
+      }
+    });
+    const workspace = created?.[0];
+    if (!workspace?.id) return { workspace:null, membership:null };
+
+    await supabaseRequest('media_workspace_members',{
+      method:'POST',
+      headers:{Prefer:'resolution=merge-duplicates,return=representation'},
+      body:{workspace_id:workspace.id,user_id:user.id,role:'owner',status:'active'}
+    });
+
+    await supabaseRequest(
+      `app_users?user_id=eq.${encodeURIComponent(user.id)}`,
+      {method:'PATCH',body:{default_workspace_id:workspace.id,updated_at:new Date().toISOString()}}
+    );
+
+    return {
+      workspace,
+      membership:{workspace_id:workspace.id,user_id:user.id,role:'owner',status:'active'}
+    };
+  } catch {
+    return { workspace:null, membership:null };
+  }
+}
+
+export async function workspaceForUserId(userId) {
+  if (!userId) return { workspace:null, membership:null };
+  const profiles = await supabaseRequest(
+    `app_users?user_id=eq.${encodeURIComponent(userId)}&select=user_id,email,full_name,role,status,default_workspace_id&limit=1`
+  ).catch(() => []);
+  const profile = profiles?.[0];
+  if (!profile) return { workspace:null, membership:null };
+  return ensureWorkspaceForProfile({id:userId,email:profile.email,user_metadata:{}}, profile);
+}
+
+export async function requireWorkspace(request, allowedRoles = null) {
+  const auth = await requireUser(request, allowedRoles);
+  const context = await ensureWorkspaceForProfile(auth.user, auth.profile);
+  return {
+    ...auth,
+    workspace: context.workspace,
+    membership: context.membership,
+    workspaceId: context.workspace?.id || null
+  };
+}
+
+export const scopedPath = (path, workspaceId, field='workspace_id') => {
+  if (!workspaceId) return path;
+  const join = path.includes('?') ? '&' : '?';
+  return `${path}${join}${encodeURIComponent(field)}=eq.${encodeURIComponent(workspaceId)}`;
+};
 
 export async function requireUser(request, allowedRoles = null) {
   const auth = request.headers.get('authorization') || '';
