@@ -799,3 +799,29 @@ button{cursor:pointer}
   .preset-live-preview{position:relative;top:auto}
   .preset-phone-frame{width:min(100%,220px)}
 }
+
+
+/* INBOX CONNECTION HEALTH */
+.inbox-health-card{margin-bottom:14px;padding:13px 14px}
+.inbox-health-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+.inbox-health-head>div{display:grid;gap:3px}
+.inbox-health-head strong{font-size:11px;color:#111827}
+.inbox-health-head span{font-size:9px;color:#64748b;line-height:1.45}
+.inbox-channel-status{display:grid;gap:7px;margin-top:11px}
+.inbox-channel-health-row{display:grid;grid-template-columns:minmax(220px,1fr) minmax(320px,1.4fr) auto;gap:12px;align-items:center;border:1px solid #eef2f7;border-radius:9px;padding:9px 10px;background:#fff}
+.inbox-channel-health-main{display:flex;gap:7px;align-items:center;min-width:0}
+.inbox-channel-health-main strong{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-channel-health-meta{display:flex;gap:11px;flex-wrap:wrap;font-size:8px;color:#64748b}
+.inbox-health-state{font-size:8px;font-weight:800;border-radius:999px;padding:4px 7px;white-space:nowrap}
+.inbox-health-state.ready{background:#ecfdf5;color:#047857}
+.inbox-health-state.activate{background:#fff7ed;color:#c2410c}
+.inbox-health-state.reconnect{background:#fef2f2;color:#b91c1c}
+.inbox-health-state.muted{background:#f8fafc;color:#94a3b8}
+.inbox-webhook-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #f1f5f9;font-size:8px;color:#64748b}
+.inbox-webhook-row code{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#f8fafc;border:1px solid #eef2f7;border-radius:7px;padding:6px 8px;color:#334155}
+#inbox-sync-message{margin-top:9px}
+@media(max-width:850px){
+  .inbox-channel-health-row{grid-template-columns:1fr}
+  .inbox-webhook-row{grid-template-columns:1fr}
+  .inbox-health-head{display:grid}
+}
