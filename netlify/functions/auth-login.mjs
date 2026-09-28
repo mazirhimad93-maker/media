@@ -1,4 +1,4 @@
-import { authPassword, ensureAppUser, jsonResponse, publicError, refreshCookie } from './_shared.mjs';
+import { authPassword, ensureAppUser, ensureWorkspaceForProfile, jsonResponse, publicError, refreshCookie } from './_shared.mjs';
 
 export default async (request) => {
   try {
@@ -17,6 +17,7 @@ export default async (request) => {
       fullName: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
       touchLogin: true,
     });
+    const workspaceContext = await ensureWorkspaceForProfile(session.user, profile);
 
     return jsonResponse({
       ok: true,
@@ -24,6 +25,7 @@ export default async (request) => {
       expires_in: session.expires_in || 3600,
       user: { id: session.user.id, email: session.user.email },
       profile,
+      workspace: workspaceContext.workspace || null,
     }, 200, {
       'set-cookie': refreshCookie(session.refresh_token),
     });
