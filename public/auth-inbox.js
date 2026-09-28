@@ -156,7 +156,7 @@ async function logout() {
   try {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
   } catch {}
-  media.state.inbox = { social: [], email: [], selected: null, conversation: null };
+  media.state.inbox = { social: [], selected: null, conversation: null };
   showAuth('');
 }
 
@@ -170,10 +170,8 @@ function dateLabel(value) {
 function inboxThreadRows() {
   const state = media.state;
   const search = (($('inbox-search') && $('inbox-search').value) || '').trim().toLowerCase();
-  const source = (($('inbox-source-filter') && $('inbox-source-filter').value) || 'all');
   const rows = [];
 
-  if (source === 'all' || source === 'social') {
     for (const x of state.inbox.social || []) {
       rows.push({
         source: 'social',
@@ -186,22 +184,6 @@ function inboxThreadRows() {
         raw: x
       });
     }
-  }
-
-  if (source === 'all' || source === 'email') {
-    for (const x of state.inbox.email || []) {
-      rows.push({
-        source: 'email',
-        id: x.id,
-        name: x.email_from || 'Email reply',
-        meta: x.email_subject || 'Email',
-        preview: x.message || '',
-        at: x.timestamp,
-        unread: 0,
-        raw: x
-      });
-    }
-  }
 
   rows.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
   if (!search) return rows;
@@ -235,11 +217,9 @@ async function loadInbox() {
   if (!media || !media.state.auth.accessToken) return;
 
   try {
-    const source = (($('inbox-source-filter') && $('inbox-source-filter').value) || 'all');
-    const result = await media.api('/api/inbox?source=' + encodeURIComponent(source) + '&limit=150');
+    const result = await media.api('/api/inbox?limit=150');
 
     media.state.inbox.social = result.social || [];
-    media.state.inbox.email = result.email || [];
     renderInboxThreads();
 
     const unread = (media.state.inbox.social || []).reduce((n, x) => n + Number(x.unread_count || 0), 0);
@@ -251,28 +231,9 @@ async function loadInbox() {
 
 window.loadAlchemicInbox = loadInbox;
 
-function renderEmailConversation(row) {
-  media.state.inbox.conversation = null;
-  $('inbox-empty').hidden = true;
-  $('inbox-conversation-wrap').hidden = false;
-  $('conversation-contact-name').textContent = row.name;
-  $('conversation-contact-meta').textContent = 'Email · ' + row.meta;
-  $('conversation-lead-status').hidden = true;
-  $('conversation-reply-form').hidden = true;
-  $('conversation-messages').innerHTML =
-    '<div class="message-bubble inbound"><div>' + media.esc(row.raw.message || '') + '</div><small>' +
-    (row.raw.timestamp ? new Date(row.raw.timestamp).toLocaleString() : '') +
-    '</small></div>';
-}
-
 async function openInboxThread(row) {
   media.state.inbox.selected = row;
   renderInboxThreads();
-
-  if (row.source === 'email') {
-    renderEmailConversation(row);
-    return;
-  }
 
   $('conversation-lead-status').hidden = false;
   $('conversation-reply-form').hidden = false;
@@ -370,7 +331,6 @@ function bindUi() {
   });
 
   $('refresh-inbox').addEventListener('click', loadInbox);
-  $('inbox-source-filter').addEventListener('change', loadInbox);
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);
   $('conversation-lead-status').addEventListener('change', changeLeadStatus);
