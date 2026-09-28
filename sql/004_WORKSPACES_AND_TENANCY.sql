@@ -402,6 +402,27 @@ begin
 end
 $triggers$;
 
+-- Allow the same external channel identifier to exist in separate workspaces.
+do $unique$
+declare r record;
+begin
+  if to_regclass('public.content_accounts') is not null then
+    for r in
+      select conname
+      from pg_constraint
+      where conrelid='public.content_accounts'::regclass
+        and contype='u'
+        and pg_get_constraintdef(oid) ilike '%(platform, platform_account_id)%'
+    loop
+      execute format('alter table public.content_accounts drop constraint %I',r.conname);
+    end loop;
+  end if;
+end
+$unique$;
+
+create unique index if not exists content_accounts_workspace_platform_uidx
+on public.content_accounts(workspace_id,platform,platform_account_id);
+
 create index if not exists media_workspace_members_user_idx on public.media_workspace_members(user_id,status);
 create index if not exists content_campaigns_workspace_idx on public.content_campaigns(workspace_id) where workspace_id is not null;
 create index if not exists distribution_campaigns_workspace_idx on public.distribution_campaigns(workspace_id) where workspace_id is not null;
