@@ -1,3 +1,5 @@
+[hidden]{display:none!important}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root{
@@ -477,4 +479,16 @@ button{cursor:pointer}
   .conversation-toolbar select{width:100%}
   .composer-actions{display:grid}
   .composer-actions button{width:100%}
+}
+
+
+/* Critical visibility guards */
+.auth-shell[hidden],
+.app-shell[hidden],
+.auth-form[hidden],
+.user-menu-popover[hidden],
+.modal-shell[hidden],
+#inbox-conversation-wrap[hidden],
+#inbox-empty[hidden]{
+  display:none!important;
 }
