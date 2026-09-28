@@ -111,10 +111,10 @@ function setView(name){
 
   const titles={
     overview:['Media Dashboard','Track content, clipping, distribution, conversations and leads from one place.'],
-    clipping:['Clipping','Review, approve and inspect every rendered clip before and after distribution.'],
+    clipping:['Clipping','Review clips and approve the ones ready to publish.'],
     campaigns:['Campaigns','See each media campaign from clip production through published results.'],
     content:['Content & Distribution','See queued posts, published results, live URLs and platform performance.'],
-    inbox:['Unified Inbox','All social conversations will live in one place.'],
+    inbox:['Unified Inbox','Your connected conversations in one place.'],
     leads:['Lead Pipeline','Track content-generated leads from first engagement to client.'],
     accounts:['Connected Channels','Manage publishing capacity, messaging access and connected channels.'],
     settings:['Settings','Manage your account, workspace and security.']
@@ -124,6 +124,7 @@ function setView(name){
   $('view-subtitle').textContent=titles[name]?.[1]||'';
 
   if(name==='settings') renderSettings();
+  if(name==='leads') window.loadAlchemicLeads?.();
 }
 
 function allCampaigns(){
@@ -341,10 +342,8 @@ function renderClips(){
   const s=state.clips?.summary||{};
 
   $('clip-summary').innerHTML=[
-    stat('Total Clips',s.total||0,'blue','✂'),
     stat('Needs Approval',s.needs_approval||0,'orange','!'),
     stat('Approved',s.approved||0,'green','✓'),
-    stat('Queued',s.queued||0,'purple','▶'),
     stat('Published',s.published||0,'cyan','↗')
   ].join('');
 
@@ -362,24 +361,20 @@ function renderClips(){
           <td>
             <strong>${esc(clip.title||'Clip')}</strong>
             ${clip.hook?`<div class="hook-text">${esc(clip.hook)}</div>`:''}
-            <button class="details-btn clip-details" data-id="${esc(clip.id)}">Open details</button>
           </td>
           <td>${esc(clip.campaign_name||'—')}</td>
-          <td>${clip.duration_seconds?Math.round(Number(clip.duration_seconds))+'s':'—'}</td>
           <td>
             <span class="status-chip ${statusClass(clip.status)}">${esc(clip.status||'unknown')}</span>
-            <div class="hook-text">${clip.publishing_approved===true?'Publishing approved':'Awaiting publishing approval'}</div>
+            <div class="hook-text">${clip.publishing_approved===true?'Approved':'Needs approval'}</div>
           </td>
           <td>
             <div class="metric-stack">
               <strong>${fmt(performance.views)} views</strong>
-              <span>${fmt(performance.likes)} likes · ${fmt(performance.comments)} comments · ${fmt(performance.shares)} shares</span>
             </div>
           </td>
-          <td>${distributionMarkup(clip)}</td>
-          <td>${publishedDropdown(clip)}</td>
           <td>
             <div class="clip-actions">
+              <button class="details-btn clip-details" data-id="${esc(clip.id)}">Details</button>
               ${clip.render_url?`<button class="open-btn preview-clip" data-id="${esc(clip.id)}">Preview</button>`:''}
               ${canApprove?`<button class="action-btn approve-clip" data-id="${esc(clip.id)}">Approve</button>`:'<span class="ok">Approved</span>'}
             </div>
@@ -387,7 +382,7 @@ function renderClips(){
         </tr>
       `;
     }).join('')
-    : '<tr><td class="empty-row" colspan="9">No clips match the current filters.</td></tr>';
+    : '<tr><td class="empty-row" colspan="6">No clips match the current filters.</td></tr>';
 
   bindClipButtons();
   updateBulkBar();
@@ -663,7 +658,9 @@ function etaLabel(job){
 function renderJobs(){
   const all=state.jobs?.jobs||[];
   const active=all.filter(j=>!['complete','failed'].includes(j.stage));
-  const rows=active.length?active:all.slice(0,6);
+  const failures=all.filter(j=>j.error||j.stage==='failed');
+  const rows=active.length||failures.length?[...failures,...active.filter(j=>!failures.includes(j))].slice(0,8):all.slice(0,6);
+  if($('jobs-summary-text')) $('jobs-summary-text').textContent=`${active.length} active · ${failures.length} need attention · ${all.length} total`;
 
   if($('jobs-last-refresh')){
     const when=state.jobs?.refreshed_at?new Date(state.jobs.refreshed_at):null;
@@ -1395,16 +1392,6 @@ async function savePasswordSettings(event){
   }
 }
 
-function renderLeadCounts(){
-  const s=state.dashboard?.summary||{};
-
-  $('lead-new').textContent=fmt(Math.max(0,Number(s.social_contacts||0)-Number(s.qualified_social||0)));
-  $('lead-engaged').textContent=fmt(s.social_conversations||0);
-  $('lead-qualified').textContent=fmt(s.qualified_social||0);
-  $('lead-booked').textContent='0';
-  $('lead-client').textContent='0';
-}
-
 function renderAll(){
   populateCampaignFilters();
   renderOverview();
@@ -1415,7 +1402,6 @@ function renderAll(){
   renderContent();
   renderAccounts();
   renderSettings();
-  renderLeadCounts();
 }
 
 async function refreshMediaData(){

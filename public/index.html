@@ -133,9 +133,20 @@
 
       <section class="view" id="view-clipping">
         <div class="section-top">
-          <div><h2>Clipping</h2><p>Review rendered clips, open the output, approve it, and see where it has been distributed.</p></div>
-          <div class="filters">
+          <div><h2>Clipping</h2><p>Review clips and approve the ones ready to publish.</p></div>
+          <div class="filters clip-main-filters">
             <input id="clip-search" class="filter-input" type="search" placeholder="Search clips">
+            <select id="clip-status-filter">
+              <option value="all">All clips</option>
+              <option value="needs">Needs approval</option>
+              <option value="approved">Approved</option>
+              <option value="published">Published</option>
+            </select>
+          </div>
+        </div>
+        <details class="clip-more-filters">
+          <summary>More filters</summary>
+          <div class="filters">
             <select id="clip-campaign-filter"><option value="all">All campaigns</option></select>
             <select id="clip-platform-filter">
               <option value="all">All platforms</option>
@@ -150,26 +161,20 @@
               <option value="30">Last 30 days</option>
               <option value="90">Last 90 days</option>
             </select>
-            <select id="clip-status-filter">
-              <option value="all">All clips</option>
-              <option value="needs">Needs approval</option>
-              <option value="approved">Approved</option>
-              <option value="published">Published</option>
-            </select>
           </div>
-        </div>
+        </details>
         <div class="stats-grid compact" id="clip-summary"></div>
 
-        <article class="card live-jobs-card">
-          <div class="card-head">
+        <details class="card live-jobs-card" id="clip-jobs-details">
+          <summary class="card-head">
             <div>
-              <h2>Active Clipper Jobs</h2>
-              <p>Live progress from the Clipper job-control tables. Auto-refreshes every 10 seconds.</p>
+              <h2>Clipper jobs</h2>
+              <p id="jobs-summary-text">Open to see render progress and errors.</p>
             </div>
             <span id="jobs-last-refresh" class="small-badge">Connecting…</span>
-          </div>
+          </summary>
           <div id="clipper-jobs-list" class="job-list"></div>
-        </article>
+        </details>
 
         <div id="bulk-bar" class="bulk-bar" hidden>
           <div><strong id="bulk-count">0 selected</strong><span>Approve selected clips for publishing.</span></div>
@@ -178,7 +183,7 @@
         <article class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th><input id="select-visible-clips" type="checkbox" aria-label="Select visible clips"></th><th>Clip</th><th>Campaign</th><th>Duration</th><th>Status</th><th>Performance</th><th>Distribution</th><th>Published</th><th>Action</th></tr></thead>
+              <thead><tr><th><input id="select-visible-clips" type="checkbox" aria-label="Select visible clips"></th><th>Clip</th><th>Campaign</th><th>Status</th><th>Reach</th><th>Actions</th></tr></thead>
               <tbody id="clips-table"></tbody>
             </table>
           </div>
@@ -396,6 +401,7 @@
             <div id="inbox-conversation-wrap" hidden>
               <div class="conversation-toolbar">
                 <div>
+                  <button id="conversation-back" class="text-btn conversation-back" type="button">← Conversations</button>
                   <h3 id="conversation-contact-name">Conversation</h3>
                   <p id="conversation-contact-meta"></p>
                 </div>
@@ -414,11 +420,22 @@
               <div id="conversation-messages" class="conversation-messages"></div>
 
               <form id="conversation-reply-form" class="conversation-composer">
-                <textarea id="conversation-reply-body" rows="3" placeholder="Write a reply..."></textarea>
-                <div class="composer-actions">
-                  <span id="conversation-mode-note">Reply will be sent through the connected social account.</span>
-                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit">Send reply</button>
+                <div class="composer-input-row">
+                  <textarea id="conversation-reply-body" rows="2" placeholder="Message…" aria-label="Message"></textarea>
+                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit">Send</button>
                 </div>
+                <div id="composer-attachment" class="composer-attachment" hidden></div>
+                <div class="composer-actions">
+                  <div class="composer-tools">
+                    <button id="composer-emoji-button" class="composer-tool" type="button" aria-label="Choose emoji" title="Emoji">☺</button>
+                    <button id="composer-file-button" class="composer-tool" type="button" aria-label="Attach a file" title="Photo, video, audio or file">＋</button>
+                    <input id="composer-file-input" type="file" accept="image/jpeg,image/png,video/mp4,audio/mp4,audio/wav,.m4a,.wav,.pdf" hidden>
+                    <button id="composer-record-button" class="composer-tool" type="button" aria-label="Record a voice message" title="Record voice message">🎙</button>
+                    <div id="composer-emoji-picker" class="composer-emoji-picker" hidden></div>
+                  </div>
+                  <span id="conversation-mode-note">Sent through your connected channel</span>
+                </div>
+                <div id="composer-error" class="composer-error" role="status" aria-live="polite"></div>
               </form>
             </div>
           </article>
@@ -426,13 +443,16 @@
       </section>
 
       <section class="view" id="view-leads">
-        <div class="section-top"><div><h2>Lead Pipeline</h2><p>Track content-generated leads from engagement to booked call.</p></div></div>
-        <div class="pipeline-board">
-          <div class="pipeline-column"><div class="pipeline-title"><span>New</span><b id="lead-new">0</b></div><div class="pipeline-empty">New social leads.</div></div>
-          <div class="pipeline-column"><div class="pipeline-title"><span>Engaged</span><b id="lead-engaged">0</b></div><div class="pipeline-empty">DM and comment conversations.</div></div>
-          <div class="pipeline-column"><div class="pipeline-title"><span>Qualified</span><b id="lead-qualified">0</b></div><div class="pipeline-empty">Qualified prospects.</div></div>
-          <div class="pipeline-column"><div class="pipeline-title"><span>Booked</span><b id="lead-booked">0</b></div><div class="pipeline-empty">Calls generated from content.</div></div>
-          <div class="pipeline-column"><div class="pipeline-title"><span>Client</span><b id="lead-client">0</b></div><div class="pipeline-empty">Clients and attributed revenue.</div></div>
+        <div class="section-top"><div><h2>Lead Pipeline</h2><p>Move contacts through your CRM. Open a card to reply.</p></div></div>
+        <div id="leads-message" class="connector-message" role="status"></div>
+        <div class="lead-mobile-filter"><label for="lead-stage-filter">Stage</label><select id="lead-stage-filter"><option value="new">New</option><option value="engaged">Engaged</option><option value="qualified">Qualified</option><option value="booked">Booked</option><option value="client">Client</option><option value="closed">Closed</option></select></div>
+        <div class="pipeline-board" id="lead-board">
+          <div class="pipeline-column" data-stage="new"><div class="pipeline-title"><span>New</span><b id="lead-new">0</b></div><div class="pipeline-cards" id="lead-cards-new"></div></div>
+          <div class="pipeline-column" data-stage="engaged"><div class="pipeline-title"><span>Engaged</span><b id="lead-engaged">0</b></div><div class="pipeline-cards" id="lead-cards-engaged"></div></div>
+          <div class="pipeline-column" data-stage="qualified"><div class="pipeline-title"><span>Qualified</span><b id="lead-qualified">0</b></div><div class="pipeline-cards" id="lead-cards-qualified"></div></div>
+          <div class="pipeline-column" data-stage="booked"><div class="pipeline-title"><span>Booked</span><b id="lead-booked">0</b></div><div class="pipeline-cards" id="lead-cards-booked"></div></div>
+          <div class="pipeline-column" data-stage="client"><div class="pipeline-title"><span>Client</span><b id="lead-client">0</b></div><div class="pipeline-cards" id="lead-cards-client"></div></div>
+          <div class="pipeline-column" data-stage="closed"><div class="pipeline-title"><span>Closed</span><b id="lead-closed">0</b></div><div class="pipeline-cards" id="lead-cards-closed"></div></div>
         </div>
       </section>
 
@@ -713,6 +733,7 @@
 
   <script type="module" src="/app.js"></script>
   <script type="module" src="/auth-inbox.js"></script>
+  <script type="module" src="/leads.js"></script>
   <script type="module" src="/content-table.js"></script>
   <script type="module" src="/content-chart.js"></script>
   <script type="module" src="/content-metrics.js"></script>
