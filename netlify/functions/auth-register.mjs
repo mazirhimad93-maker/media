@@ -1,4 +1,4 @@
-import { authSignup, ensureAppUser, jsonResponse, publicError, refreshCookie, registrationCodeMatches, supabaseRequest } from './_shared.mjs';
+import { authSignup, ensureAppUser, ensureWorkspaceForProfile, jsonResponse, publicError, refreshCookie, registrationCodeMatches, supabaseRequest } from './_shared.mjs';
 
 export default async (request) => {
   try {
@@ -33,6 +33,7 @@ export default async (request) => {
     if (!user?.id) return jsonResponse({ error: 'Supabase did not return a user' }, 400);
 
     const profile = await ensureAppUser(user, { fullName, touchLogin: Boolean(result?.access_token) });
+    const workspaceContext = await ensureWorkspaceForProfile(user, profile);
 
     if (result?.access_token && result?.refresh_token) {
       return jsonResponse({
@@ -42,6 +43,7 @@ export default async (request) => {
         expires_in: result.expires_in || 3600,
         user: { id: user.id, email: user.email || email },
         profile,
+        workspace: workspaceContext.workspace || null,
       }, 201, {
         'set-cookie': refreshCookie(result.refresh_token),
       });
@@ -53,6 +55,7 @@ export default async (request) => {
       message: 'Account created. Check your email to confirm the account, then sign in.',
       user: { id: user.id, email: user.email || email },
       profile,
+      workspace: workspaceContext.workspace || null,
     }, 201);
   } catch (error) {
     return publicError(error, error.status || 400);
