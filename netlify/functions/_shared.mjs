@@ -378,6 +378,34 @@ export async function ensureAppUser(user, { fullName = null, touchLogin = false 
     return existing[0];
   }
 
+  // If the same email already exists under an older/stale Auth user id,
+  // relink that workspace profile to the user who just authenticated.
+  if (user.email) {
+    const normalizedEmail = String(user.email).trim().toLowerCase();
+    const emailRows = await supabaseRequest(
+      `app_users?email=eq.${encodeURIComponent(normalizedEmail)}&select=user_id,email,full_name,role,status,created_at,updated_at,last_login_at&limit=1`
+    ).catch(() => []);
+
+    if (emailRows?.[0]) {
+      const stale = emailRows[0];
+      const rows = await supabaseRequest(
+        `app_users?user_id=eq.${encodeURIComponent(stale.user_id)}`,
+        {
+          method: 'PATCH',
+          headers: { Prefer: 'return=representation' },
+          body: {
+            user_id: user.id,
+            email: normalizedEmail,
+            full_name: fullName || stale.full_name || user.user_metadata?.full_name || user.user_metadata?.name || null,
+            last_login_at: touchLogin ? now : stale.last_login_at,
+            updated_at: now,
+          },
+        }
+      );
+      return rows?.[0] || { ...stale, user_id: user.id, email: normalizedEmail };
+    }
+  }
+
   const any = await supabaseRequest('app_users?select=user_id&limit=1').catch(() => []);
   const role = any?.length ? 'member' : 'owner';
   const rows = await supabaseRequest('app_users', {
