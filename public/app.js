@@ -11,8 +11,9 @@ const state={
   content:{rows:[],published:[],summary:{}},
   jobs:{jobs:[],campaign_progress:[],summary:{}},
   presets:{presets:[]},
-  auth:{accessToken:null,user:null,profile:null},
-  inbox:{social:[],email:[],selected:null,conversation:null},
+  settings:null,
+  auth:{accessToken:null,user:null,profile:null,workspace:null},
+  inbox:{social:[],selected:null,conversation:null},
   selectedClips:new Set(),
   view:'overview'
 };
@@ -50,6 +51,7 @@ async function restoreSession(){
     state.auth.accessToken=payload.access_token;
     state.auth.user=payload.user||null;
     state.auth.profile=payload.profile||null;
+    state.auth.workspace=payload.workspace||null;
     return true;
   }catch{return false;}
 }
@@ -114,7 +116,8 @@ function setView(name){
     content:['Content & Distribution','See queued posts, published results, live URLs and platform performance.'],
     inbox:['Unified Inbox','All social conversations will live in one place.'],
     leads:['Lead Pipeline','Track content-generated leads from first engagement to client.'],
-    accounts:['Connected Channels','Manage the accounts already connected to your Distributor.']
+    accounts:['Connected Channels','Manage publishing capacity, messaging access and connected channels.'],
+    settings:['Settings','Manage your account, workspace and security.']
   };
 
   $('view-title').textContent=titles[name]?.[0]||'Alchemic Media';
@@ -1306,7 +1309,7 @@ setInterval(()=>{
 },10000);
 
 const initialView=new URLSearchParams(window.location.search).get('view');
-if(['overview','clipping','campaigns','content','inbox','leads','accounts'].includes(initialView)) setView(initialView);
+if(['overview','clipping','campaigns','content','inbox','leads','accounts','settings'].includes(initialView)) setView(initialView);
 
 window.__alchemic={
   state,
