@@ -75,6 +75,48 @@ function niceMax(value){
   return nice*power;
 }
 
+function platformIcon(platform){
+  if(platform==='youtube_shorts') return '▶';
+  if(platform==='instagram_reels') return '◎';
+  if(platform==='facebook_page'||platform==='facebook') return 'f';
+  if(platform==='tiktok_video'||platform==='tiktok') return '♪';
+  return '•';
+}
+
+function renderBreakdown(){
+  const host=$('content-platform-breakdown');
+  if(!host) return;
+  const rows=currentRows().filter(x=>x.status==='done'||x.external_post_id||x.external_post_url);
+  const map=new Map();
+  for(const row of rows){
+    const key=row.platform||'unknown';
+    const item=map.get(key)||{platform:key,clips:0,views:0,results:0};
+    item.clips++;
+    item.views+=Number(row.views||0);
+    item.results+=Number(row.primary_result||0);
+    map.set(key,item);
+  }
+  const data=[...map.values()].sort((a,b)=>b.views-a.views);
+  const max=Math.max(1,...data.map(x=>x.views));
+  const title=$('content-breakdown-title');
+  if(title) title.textContent=ui.metric==='results'?'Results by platform':'Views by platform';
+  host.innerHTML=data.length?data.map(item=>
+    '<div class="analytics-platform-row">'+
+      '<div class="analytics-platform-main"><span class="analytics-platform-icon '+item.platform+'">'+platformIcon(item.platform)+'</span><strong>'+platformLabel(item.platform)+'</strong></div>'+
+      '<div class="analytics-platform-bar"><span style="width:'+Math.max(2,item.views/max*100)+'%"></span></div>'+
+      '<div class="analytics-platform-meta"><span>'+fmt(item.clips)+' clips</span><strong>'+fmt(item.views)+' views</strong><span>'+fmt(item.results)+' results</span></div>'+
+    '</div>'
+  ).join(''):'<div class="analytics-empty-row">No published content in this range.</div>';
+}
+
+function syncVisibleControls(){
+  const platform=$('content-platform-filter')?.value||'all';
+  document.querySelectorAll('.content-platform-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.platform===platform));
+  const range=$('content-date-filter')?.value||'30';
+  if($('content-range-select')) $('content-range-select').value=range==='all'?'all':range;
+  document.querySelectorAll('.content-metric-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.metric===ui.metric));
+  document.querySelectorAll('.content-mode-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode===ui.mode));
+}
 function render(){
   const host=$('content-chart');
   if(!host) return;
@@ -104,6 +146,7 @@ function render(){
         <span>Use Sync now to collect current metrics. Historical daily YouTube curves require YouTube Analytics authorization.</span>
       </div>
     `;
+    renderBreakdown();
     return;
   }
 
@@ -158,14 +201,41 @@ function render(){
       ${dots}
     </svg>
   `;
+  renderBreakdown();
 }
 
-$('content-chart-metric')?.addEventListener('change',render);
-window.addEventListener('alchemic-content-rendered',render);
-window.addEventListener('resize',()=>{ if(state.view==='content') render(); });
+
+document.querySelectorAll('.content-platform-tab').forEach(btn=>btn.addEventListener('click',()=>{
+  if($('content-platform-filter')) $('content-platform-filter').value=btn.dataset.platform;
+  window.__alchemicContentTable?.render?.();
+  syncVisibleControls();
+}));
+
+$('content-range-select')?.addEventListener('change',()=>{
+  if($('content-date-filter')) $('content-date-filter').value=$('content-range-select').value;
+  window.__alchemicContentTable?.render?.();
+  syncVisibleControls();
+});
+
+document.querySelectorAll('.content-metric-tab').forEach(btn=>btn.addEventListener('click',()=>{
+  ui.metric=btn.dataset.metric;
+  syncVisibleControls();
+  render();
+}));
+
+document.querySelectorAll('.content-mode-btn').forEach(btn=>btn.addEventListener('click',()=>{
+  ui.mode=btn.dataset.mode;
+  syncVisibleControls();
+  render();
+}));
+
+window.addEventListener('alchemic-content-rendered',()=>{syncVisibleControls();render();});
+window.addEventListener('resize',()=>{if(state.view==='content') render();});
 
 const wait=setInterval(()=>{
   if(state.content){
+    if($('content-date-filter')&&$('content-date-filter').value==='all') $('content-date-filter').value='30';
+    syncVisibleControls();
     render();
     clearInterval(wait);
   }
