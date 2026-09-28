@@ -101,8 +101,20 @@ export default async (request) => {
       const h=historyByQueue.get(q.id)||null;
       const m=h?latestMetricByHistory.get(h.id)||{}:{};
 
-      const likes=n(m.likes),comments=n(m.comments),shares=n(m.shares),saves=n(m.saves),views=n(m.views);
-      const engagements=likes+comments+shares+saves;
+      const platform=q.platform||account.platform||null;
+      const rawMetrics=m.raw_json||{};
+      const hasSnapshot=Boolean(m.id);
+      const instagramInsightsReady=platform!=='instagram_reels' || rawMetrics.insights_ok===true || Boolean(rawMetrics.insights?.data?.length);
+      const viewsAvailable=hasSnapshot && instagramInsightsReady;
+      const interactionsAvailable=hasSnapshot;
+      const views=viewsAvailable?n(m.views):null;
+      const likes=interactionsAvailable?n(m.likes):null;
+      const comments=interactionsAvailable?n(m.comments):null;
+      const shares=interactionsAvailable?n(m.shares):null;
+      const saves=interactionsAvailable?n(m.saves):null;
+      const engagements=[likes,comments,shares,saves].some(v=>v!==null)
+        ? n(likes)+n(comments)+n(shares)+n(saves)
+        : null;
 
       const rowLinks=[
         ...(h?.id?(linksByHistory.get(h.id)||[]):[]),
@@ -125,7 +137,6 @@ export default async (request) => {
         outboundDms+=convMessages.filter(message=>message.direction==='outbound'&&message.message_type!=='comment').length;
       }
 
-      const platform=q.platform||account.platform||null;
       const isYoutube=platform==='youtube_shorts';
       const primaryResult=isYoutube?linkClicks:inboundDms;
       const primaryResultLabel=isYoutube?'Link Clicks':'DMs';
@@ -152,7 +163,14 @@ export default async (request) => {
         publish_count:asset.publish_count||0,
         media_approval_hold:q.media_approval_hold===true,
         views,likes,comments,shares,saves,engagements,
-        engagement_rate:views>0?engagements/views*100:0,
+        views_available:viewsAvailable,
+        metrics_available:hasSnapshot,
+        metrics_status:!hasSnapshot
+          ? 'not_synced'
+          : (platform==='instagram_reels'&&!instagramInsightsReady)
+            ? 'insights_permission_required'
+            : 'ready',
+        engagement_rate:views!==null&&views>0&&engagements!==null?engagements/views*100:null,
         link_clicks:linkClicks,
         inbound_dms:inboundDms,
         outbound_dms:outboundDms,
@@ -286,12 +304,12 @@ export default async (request) => {
         running:rows.filter(x=>x.status==='running').length,
         failed:rows.filter(x=>x.status==='failed').length,
         held:rows.filter(x=>x.media_approval_hold).length,
-        views:published.reduce((sum,x)=>sum+x.views,0),
-        likes:published.reduce((sum,x)=>sum+x.likes,0),
-        comments:published.reduce((sum,x)=>sum+x.comments,0),
-        shares:published.reduce((sum,x)=>sum+x.shares,0),
-        saves:published.reduce((sum,x)=>sum+x.saves,0),
-        engagements:published.reduce((sum,x)=>sum+x.engagements,0),
+        views:published.reduce((sum,x)=>sum+n(x.views),0),
+        likes:published.reduce((sum,x)=>sum+n(x.likes),0),
+        comments:published.reduce((sum,x)=>sum+n(x.comments),0),
+        shares:published.reduce((sum,x)=>sum+n(x.shares),0),
+        saves:published.reduce((sum,x)=>sum+n(x.saves),0),
+        engagements:published.reduce((sum,x)=>sum+n(x.engagements),0),
         link_clicks:published.reduce((sum,x)=>sum+x.link_clicks,0),
         inbound_dms:published.reduce((sum,x)=>sum+x.inbound_dms,0),
         dm_threads:published.reduce((sum,x)=>sum+x.dm_threads,0),
