@@ -1,7 +1,7 @@
-import { jsonResponse, publicError, requireAdmin, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 export default async (request) => {
   try {
-    requireAdmin(request);
+    await requireUser(request);
     const url=new URL(request.url); const id=url.searchParams.get('id'); if(!id) throw Object.assign(new Error('conversation id required'),{status:400});
     const [conversation,messages,outbox]=await Promise.all([
       supabaseRequest(`v_social_inbox?conversation_id=eq.${encodeURIComponent(id)}&select=*&limit=1`),
