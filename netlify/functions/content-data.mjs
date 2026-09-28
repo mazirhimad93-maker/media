@@ -18,7 +18,7 @@ export default async (request) => {
       safe(scopedPath('tracked_links?select=id,campaign_id,asset_id,history_id,account_id,slug,destination_url&limit=15000',workspaceId)),
       safe(scopedPath('tracked_link_clicks?select=id,tracked_link_id,occurred_at&order=occurred_at.asc&limit=50000',workspaceId)),
       safe(scopedPath('social_conversations?select=id,account_id,source_history_id,source_external_post_id,created_at,last_inbound_at,last_message_at&limit=20000',workspaceId)),
-      safe(scopedPath('social_messages?select=id,conversation_id,direction,sent_at,created_at&order=sent_at.asc&limit=60000',workspaceId))
+      safe(scopedPath('social_messages?select=id,conversation_id,direction,message_type,sent_at,created_at&order=sent_at.asc&limit=60000',workspaceId))
     ]);
 
     const assetById=new Map((assets||[]).map(x=>[x.id,x]));
@@ -116,12 +116,13 @@ export default async (request) => {
         ...(q.external_post_id?(convByExternal.get(String(q.external_post_id))||[]):[])
       ];
       const uniqueConversations=[...new Map(rowConversations.map(x=>[x.id,x])).values()];
-      let inboundDms=0,outboundDms=0;
+      let inboundDms=0,outboundDms=0,dmThreads=0;
       for(const conv of uniqueConversations){
-        for(const message of messagesByConversation.get(conv.id)||[]){
-          if(message.direction==='inbound') inboundDms++;
-          else if(message.direction==='outbound') outboundDms++;
-        }
+        const convMessages=messagesByConversation.get(conv.id)||[];
+        const inboundMessages=convMessages.filter(message=>message.direction==='inbound'&&message.message_type!=='comment');
+        if(inboundMessages.length) dmThreads++;
+        inboundDms+=inboundMessages.length;
+        outboundDms+=convMessages.filter(message=>message.direction==='outbound'&&message.message_type!=='comment').length;
       }
 
       const platform=q.platform||account.platform||null;
@@ -155,7 +156,7 @@ export default async (request) => {
         link_clicks:linkClicks,
         inbound_dms:inboundDms,
         outbound_dms:outboundDms,
-        dm_threads:uniqueConversations.length,
+        dm_threads:dmThreads,
         primary_result:primaryResult,
         primary_result_label:primaryResultLabel,
         tracked_links:uniqueLinks.map(x=>({id:x.id,slug:x.slug,destination_url:x.destination_url})),
@@ -248,15 +249,19 @@ export default async (request) => {
         ||(conv.source_external_post_id?rowByExternal.get(String(conv.source_external_post_id)):null);
       if(!row) continue;
 
-      activity_points.push({
-        queue_id:row.queue_id,history_id:row.history_id,campaign_id:row.campaign_id,platform:row.platform,
-        occurred_at:conv.created_at||conv.last_inbound_at||conv.last_message_at,
-        views:0,likes:0,comments:0,shares:0,saves:0,engagements:0,
-        link_clicks:0,inbound_dms:0,dm_threads:1,source:'dm_thread'
-      });
+      const convMessages=messagesByConversation.get(conv.id)||[];
+      const inboundDmMessages=convMessages.filter(message=>message.direction==='inbound'&&message.message_type!=='comment');
 
-      for(const message of messagesByConversation.get(conv.id)||[]){
-        if(message.direction!=='inbound') continue;
+      if(inboundDmMessages.length){
+        activity_points.push({
+          queue_id:row.queue_id,history_id:row.history_id,campaign_id:row.campaign_id,platform:row.platform,
+          occurred_at:inboundDmMessages[0].sent_at||inboundDmMessages[0].created_at||conv.created_at,
+          views:0,likes:0,comments:0,shares:0,saves:0,engagements:0,
+          link_clicks:0,inbound_dms:0,dm_threads:1,source:'dm_thread'
+        });
+      }
+
+      for(const message of inboundDmMessages){
         activity_points.push({
           queue_id:row.queue_id,history_id:row.history_id,campaign_id:row.campaign_id,platform:row.platform,
           occurred_at:message.sent_at||message.created_at,
