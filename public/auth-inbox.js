@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
 let media = null;
+let inboxBusy = false;
 
 function waitForMedia() {
   if (window.__alchemic) {
@@ -57,6 +58,7 @@ async function showApp() {
   updateUserUi();
   await media.load();
   await loadInbox();
+  await loadInboxHealth();
 }
 
 async function restoreSession() {
@@ -245,6 +247,168 @@ async function loadInbox() {
 
 window.loadAlchemicInbox = loadInbox;
 
+function inboxStateLabel(account) {
+  if (account.inbox_state === 'ready') return ['Ready', 'ready'];
+  if (account.inbox_state === 'activate') return ['Needs activation', 'activate'];
+  if (account.inbox_state === 'reconnect_required') return ['Reconnect required', 'reconnect'];
+  return ['Not applicable', 'muted'];
+}
+
+function renderInboxChannelHealth(accounts) {
+  const host = $('inbox-channel-status');
+  const summary = $('inbox-health-summary');
+  if (!host || !summary) return;
+
+  const metaAccounts = (accounts || []).filter((a) => ['instagram_reels','facebook_page','facebook'].includes(a.platform));
+  const ready = metaAccounts.filter((a) => a.inbox_state === 'ready').length;
+  const activate = metaAccounts.filter((a) => a.inbox_state === 'activate').length;
+  const reconnect = metaAccounts.filter((a) => a.inbox_state === 'reconnect_required').length;
+
+  summary.textContent = metaAccounts.length
+    ? `${ready} ready · ${activate} activate · ${reconnect} reconnect`
+    : 'No Meta channels';
+
+  host.innerHTML = metaAccounts.length ? metaAccounts.map((account) => {
+    const [label, tone] = inboxStateLabel(account);
+    const platform = media.platformLabel(account.platform);
+    const lastSync = account.last_inbox_sync_at ? new Date(account.last_inbox_sync_at).toLocaleString() : 'Never synced';
+    return `
+      <div class="inbox-channel-health-row">
+        <div class="inbox-channel-health-main">
+          <span class="platform-chip">${media.esc(platform)}</span>
+          <strong>@${media.esc(account.username || 'account')}</strong>
+          <span class="inbox-health-state ${tone}">${label}</span>
+        </div>
+        <div class="inbox-channel-health-meta">
+          <span>Messaging: ${account.messaging_permission ? 'granted' : 'missing'}</span>
+          <span>Webhook: ${media.esc(account.webhook_status || 'not configured')}</span>
+          <span>Last sync: ${media.esc(lastSync)}</span>
+        </div>
+        ${account.inbox_state === 'reconnect_required'
+          ? '<button class="text-btn inbox-reconnect" data-provider="' + (account.platform === 'instagram_reels' ? 'instagram' : 'facebook') + '" type="button">Reconnect in Channels</button>'
+          : ''}
+      </div>
+    `;
+  }).join('') : '<div class="empty-list">Connect an Instagram professional account or Facebook Page from Channels first.</div>';
+
+  host.querySelectorAll('.inbox-reconnect').forEach((button) => {
+    button.onclick = () => {
+      media.setView('accounts');
+      setTimeout(() => {
+        const target = button.dataset.provider === 'instagram' ? $('connect-instagram') : $('connect-facebook');
+        if (target) target.scrollIntoView({ behavior:'smooth', block:'center' });
+      }, 50);
+    };
+  });
+}
+
+async function loadInboxHealth() {
+  if (!media || !media.state.auth.accessToken) return [];
+  try {
+    const result = await media.api('/api/channels/inbox/activate');
+    const accounts = result.accounts || [];
+    media.state.inbox.accounts = accounts;
+    renderInboxChannelHealth(accounts);
+    return accounts;
+  } catch (error) {
+    const host = $('inbox-channel-status');
+    if (host) host.innerHTML = '<div class="empty-list">' + media.esc(error.message) + '</div>';
+    return [];
+  }
+}
+
+async function syncInboxAccounts({ activate = false, silent = false } = {}) {
+  if (inboxBusy || !media?.state?.auth?.accessToken) return;
+  inboxBusy = true;
+
+  const activateButton = $('configure-inboxes');
+  const syncButton = $('refresh-inbox');
+  const message = $('inbox-sync-message');
+
+  if (activateButton) activateButton.disabled = true;
+  if (syncButton) syncButton.disabled = true;
+  if (message) {
+    message.textContent = activate ? 'Activating connected inboxes…' : 'Pulling messages from connected inboxes…';
+    message.className = 'connector-message';
+  }
+
+  try {
+    let accounts = await loadInboxHealth();
+
+    if (activate) {
+      for (const account of accounts) {
+        if (!['instagram_reels','facebook_page','facebook'].includes(account.platform)) continue;
+        if (account.inbox_state !== 'activate') continue;
+
+        try {
+          await media.api('/api/channels/inbox/activate', {
+            method:'POST',
+            body:{ accountId: account.id }
+          });
+        } catch (error) {
+          account.activation_error = error.message;
+        }
+      }
+      accounts = await loadInboxHealth();
+    }
+
+    const syncable = accounts.filter((account) =>
+      ['instagram_reels','facebook_page','facebook'].includes(account.platform) &&
+      account.messaging_permission
+    );
+
+    let totalInserted = 0;
+    let totalConversations = 0;
+    const failures = [];
+
+    for (const account of syncable) {
+      try {
+        const result = await media.api('/api/channels/inbox/sync', {
+          method:'POST',
+          body:{ accountId: account.id }
+        });
+        totalInserted += Number(result.messages_inserted || 0);
+        totalConversations += Number(result.conversations || 0);
+      } catch (error) {
+        failures.push('@' + (account.username || 'account') + ': ' + error.message);
+      }
+    }
+
+    await loadInbox();
+    await loadInboxHealth();
+
+    const reconnect = (media.state.inbox.accounts || []).filter((a) => a.inbox_state === 'reconnect_required');
+
+    if (message) {
+      if (failures.length) {
+        message.textContent = `Imported ${totalInserted} messages from ${totalConversations} conversations. ${failures.length} account(s) need attention.`;
+        message.className = 'connector-message error';
+        message.title = failures.join('\n');
+      } else if (reconnect.length) {
+        message.textContent = `Imported ${totalInserted} messages. ${reconnect.length} account(s) must be reconnected once to grant DM permission.`;
+        message.className = 'connector-message error';
+      } else {
+        message.textContent = `Inbox synced. ${totalInserted} new message${totalInserted === 1 ? '' : 's'} imported.`;
+        message.className = 'connector-message success';
+      }
+    }
+
+    if (!silent && failures.length) console.warn('Inbox sync failures', failures);
+  } catch (error) {
+    if (message) {
+      message.textContent = error.message;
+      message.className = 'connector-message error';
+    }
+  } finally {
+    inboxBusy = false;
+    if (activateButton) activateButton.disabled = false;
+    if (syncButton) syncButton.disabled = false;
+  }
+}
+
+window.loadAlchemicInboxHealth = loadInboxHealth;
+window.syncAlchemicInboxes = syncInboxAccounts;
+
 async function openInboxThread(row) {
   media.state.inbox.selected = row;
   renderInboxThreads();
@@ -344,13 +508,18 @@ function bindUi() {
     $('user-menu-popover').hidden = !$('user-menu-popover').hidden;
   });
 
-  $('refresh-inbox').addEventListener('click', loadInbox);
+  $('refresh-inbox').addEventListener('click', () => syncInboxAccounts({ activate:false, silent:false }));
+  $('configure-inboxes').addEventListener('click', () => syncInboxAccounts({ activate:true, silent:false }));
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);
   $('conversation-lead-status').addEventListener('change', changeLeadStatus);
 
   document.querySelectorAll('.nav-item[data-view="inbox"]').forEach((button) => {
-    button.addEventListener('click', loadInbox);
+    button.addEventListener('click', () => {
+      loadInbox();
+      loadInboxHealth();
+      setTimeout(() => syncInboxAccounts({ activate:false, silent:true }), 250);
+    });
   });
 }
 
