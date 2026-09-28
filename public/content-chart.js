@@ -79,16 +79,21 @@ function render(){
   const host=$('content-chart');
   if(!host) return;
 
-  const metric=$('content-chart-metric')?.value||'views';
+  const metric=ui.metric;
   const series=dailySeries(metric);
   const rows=currentRows();
-  const total=series.reduce((n,x)=>n+x.value,0);
+  const total=ui.mode==='daily'
+    ? series.reduce((n,x)=>n+Number(x.value||0),0)
+    : Number(series.at(-1)?.value||0);
+
+  if($('content-chart-total')) $('content-chart-total').textContent=fmt(total);
+  if($('content-chart-total-label')) $('content-chart-total-label').textContent=metricLabels[metric]||metric;
 
   const subtitle=$('content-chart-subtitle');
   if(subtitle){
     subtitle.textContent=series.length
-      ? `${metricLabels[metric]||metric}: ${fmt(total)} across ${rows.length} matching posts`
-      : 'Platform metric history will appear here after the first sync.';
+      ? `${ui.mode==='daily'?'Daily':'Cumulative'} ${String(metricLabels[metric]||metric).toLowerCase()} across ${rows.length} matching posts`
+      : 'Performance history will appear here as platform metrics are collected.';
   }
 
   if(!series.length){
@@ -96,7 +101,7 @@ function render(){
       <div class="chart-empty">
         <div class="chart-empty-icon">↗</div>
         <strong>No performance history yet</strong>
-        <span>Views, clicks and attributed DMs will appear here as Media collects platform and conversion data.</span>
+        <span>Use Sync now to collect current metrics. Historical daily YouTube curves require YouTube Analytics authorization.</span>
       </div>
     `;
     return;
