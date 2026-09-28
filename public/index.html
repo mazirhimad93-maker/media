@@ -487,6 +487,7 @@
                   <th>Lifetime</th>
                   <th>Queued</th>
                   <th>Inbox</th>
+                  <th>Analytics</th>
                   <th>Webhook</th>
                 </tr>
               </thead>
@@ -626,6 +627,33 @@
     </div>
   </div>
 
+  <div id="published-post-modal" class="modal-shell" hidden>
+    <div class="modal-backdrop" data-close-published-post></div>
+    <div class="published-post-card">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow-small">LIVE PUBLISHED POST</span>
+          <h3 id="published-post-title">Published post</h3>
+          <p id="published-post-subtitle"></p>
+        </div>
+        <button class="modal-close" type="button" data-close-published-post>×</button>
+      </div>
+      <div class="published-post-layout">
+        <div id="published-post-embed" class="published-post-embed"></div>
+        <aside class="published-post-stats">
+          <div id="published-post-kpis" class="published-post-kpis"></div>
+          <div class="published-post-meta">
+            <div><span>Campaign</span><strong id="published-post-campaign">—</strong></div>
+            <div><span>Account</span><strong id="published-post-account">—</strong></div>
+            <div><span>Published</span><strong id="published-post-date">—</strong></div>
+            <div><span>Metrics updated</span><strong id="published-post-updated">—</strong></div>
+          </div>
+          <a id="published-post-link" class="primary-inline-btn published-post-link" target="_blank" rel="noopener">Open live post ↗</a>
+        </aside>
+      </div>
+    </div>
+  </div>
+
   <div id="detail-drawer" class="drawer-shell" hidden>
     <div class="drawer-backdrop" data-close-drawer></div>
     <aside class="detail-drawer">
@@ -639,5 +667,6 @@
   <script type="module" src="/content-table.js"></script>
   <script type="module" src="/content-chart.js"></script>
   <script type="module" src="/content-metrics.js"></script>
+  <script type="module" src="/published-post-preview.js"></script>
 </body>
 </html>
