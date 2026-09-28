@@ -11,6 +11,8 @@ const state={
   content:{rows:[],published:[],summary:{}},
   jobs:{jobs:[],campaign_progress:[],summary:{}},
   presets:{presets:[]},
+  auth:{accessToken:null,user:null,profile:null},
+  inbox:{social:[],email:[],selected:null,conversation:null},
   selectedClips:new Set(),
   view:'overview'
 };
@@ -39,17 +41,39 @@ const dateShort=v=>{
   return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 };
 
+async function restoreSession(){
+  try{
+    const response=await fetch('/api/auth/session',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'}});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok||!payload.authenticated||!payload.access_token) return false;
+    state.auth.accessToken=payload.access_token;
+    state.auth.user=payload.user||null;
+    state.auth.profile=payload.profile||null;
+    return true;
+  }catch{return false;}
+}
+
 async function api(path,options={}){
-  const headers={...(options.headers||{})};
-  if(options.body!==undefined) headers['content-type']='application/json';
+  const internal={...options};
+  const retried=Boolean(internal.__retried);
+  delete internal.__retried;
+  const headers={...(internal.headers||{})};
+  if(internal.body!==undefined) headers['content-type']='application/json';
+  if(state.auth?.accessToken && !headers.authorization) headers.authorization=`Bearer ${state.auth.accessToken}`;
 
   const response=await fetch(path,{
-    ...options,
+    ...internal,
+    credentials:'same-origin',
     headers,
-    body:options.body===undefined?undefined:JSON.stringify(options.body)
+    body:internal.body===undefined?undefined:JSON.stringify(internal.body)
   });
 
   const payload=await response.json().catch(()=>({}));
+  if(response.status===401 && !retried && !path.startsWith('/api/auth/')){
+    const restored=await restoreSession();
+    if(restored) return api(path,{...options,__retried:true});
+    showAuth('Your session expired. Sign in again.');
+  }
   if(!response.ok) throw new Error(payload.error||`Request failed (${response.status})`);
   return payload;
 }
