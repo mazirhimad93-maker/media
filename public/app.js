@@ -28,6 +28,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({
 
 const platformLabel=p=>({
   instagram_reels:'Instagram',
+  facebook_page:'Facebook',
   youtube_shorts:'YouTube',
   tiktok_video:'TikTok',
   tiktok:'TikTok',
@@ -1031,7 +1032,7 @@ async function startConnector(provider){
   const ready=config.providers?.[provider]?.ready;
 
   if(!ready){
-    const providerName=provider==='instagram'?'Instagram':'YouTube';
+    const providerName=provider==='instagram'?'Instagram':provider==='facebook'?'Facebook':'YouTube';
     $('connector-message').textContent=`${providerName} app credentials are not configured in this Netlify project yet.`;
     $('connector-message').className='connector-message error';
     return;
@@ -1046,10 +1047,14 @@ async function startConnector(provider){
     minGapMinutes:$('connector-gap')?.value||'60'
   });
 
-  const button=provider==='instagram'?$('connect-instagram'):$('connect-youtube');
+  const button=provider==='instagram'
+    ? $('connect-instagram')
+    : provider==='facebook'
+      ? $('connect-facebook')
+      : $('connect-youtube');
   if(button) button.disabled=true;
 
-  $('connector-message').textContent=`Opening ${provider==='instagram'?'Instagram':'Google'} authorization…`;
+  $('connector-message').textContent=`Opening ${provider==='instagram'?'Instagram':provider==='facebook'?'Facebook':'Google'} authorization…`;
   $('connector-message').className='connector-message';
 
   try{
@@ -1078,6 +1083,10 @@ function renderAccounts(){
     ? 'Connector configured'
     : 'Publishing connected · add messaging OAuth';
 
+  $('fb-provider-status').textContent=config.providers?.facebook?.ready
+    ? 'Messenger connector configured'
+    : 'Add Facebook app keys in Netlify';
+
   $('yt-provider-status').textContent=config.providers?.youtube?.ready
     ? 'Connector configured'
     : 'Existing channel tokens in DB';
@@ -1087,6 +1096,13 @@ function renderAccounts(){
     $('connect-instagram-status').textContent=config.providers?.instagram?.ready
       ? 'Connect another professional account'
       : 'Add Instagram app keys in Netlify';
+  }
+
+  if($('connect-facebook')){
+    $('connect-facebook').disabled=!config.providers?.facebook?.ready;
+    $('connect-facebook-status').textContent=config.providers?.facebook?.ready
+      ? 'Connect Pages you manage'
+      : 'Add Facebook app keys in Netlify';
   }
 
   if($('connect-youtube')){
@@ -1224,6 +1240,7 @@ $('content-campaign-filter').addEventListener('change',renderContent);
 $('content-date-filter').addEventListener('change',renderContent);
 
 if($('connect-instagram')) $('connect-instagram').addEventListener('click',()=>startConnector('instagram'));
+if($('connect-facebook')) $('connect-facebook').addEventListener('click',()=>startConnector('facebook'));
 if($('connect-youtube')) $('connect-youtube').addEventListener('click',()=>startConnector('youtube'));
 
 $('select-visible-clips').addEventListener('change',event=>{
