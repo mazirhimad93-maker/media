@@ -1222,7 +1222,7 @@ function renderSettings(){
 
   if($('settings-full-name')) $('settings-full-name').value=profile.full_name||'';
   if($('settings-email')) $('settings-email').value=user.email||profile.email||'';
-  if($('settings-role')) $('settings-role').value=profile.role||state.settings?.membership?.role||'member';
+  if($('settings-role')) $('settings-role').value=state.settings?.membership?.role||profile.role||'member';
   if($('settings-workspace-name')) $('settings-workspace-name').value=workspace.name||'';
   if($('settings-workspace-id')) $('settings-workspace-id').value=workspace.id||'Workspace migration pending';
 }
