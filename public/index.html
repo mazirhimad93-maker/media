@@ -388,7 +388,13 @@
           <article class="provider-card"><div class="provider-logo tiktok">TT</div><div><strong>TikTok</strong><span>Publishing connected</span></div></article>
         </div>
         <article class="card">
-          <div class="card-head"><div><h2>All Channels</h2><p>Existing Distributor accounts and capabilities.</p></div></div>
+          <div class="card-head">
+            <div><h2>All Channels</h2><p>Usage is based on successful publishes from the Distributor queue.</p></div>
+            <div class="channel-bulk-limit">
+              <input id="bulk-daily-limit" type="number" min="0" max="10000" value="4" aria-label="Daily limit for all channels">
+              <button id="apply-all-daily-limit" class="secondary-btn" type="button">Apply daily limit to all</button>
+            </div>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
