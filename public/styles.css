@@ -619,3 +619,33 @@ button{cursor:pointer}
 .primary-result-cell{display:flex;align-items:baseline;gap:5px}
 .primary-result-cell strong{font-size:11px;color:#111827}
 .primary-result-cell span{font-size:8px;color:#64748b}
+
+
+/* PUBLISHED SOCIAL POST PREVIEW */
+.published-post-card{position:relative;z-index:2;width:min(1040px,94vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 24px 70px rgba(15,23,42,.22);padding:18px}
+.published-post-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:18px;align-items:start}
+.published-post-embed{min-height:600px;background:#0f172a;border-radius:12px;display:grid;place-items:center;overflow:hidden}
+.published-social-frame{width:100%;height:600px;border:0;background:#fff}
+.youtube-frame{aspect-ratio:9/16;height:min(70vh,720px);width:auto;max-width:100%}
+.instagram-frame{height:min(76vh,760px);background:#fff}
+.facebook-frame{height:min(72vh,680px);background:#fff}
+.tiktok-frame{height:min(76vh,760px);background:#000}
+.published-post-fallback{display:grid;gap:7px;text-align:center;color:#cbd5e1;padding:40px}.published-post-fallback strong{color:#fff}
+.published-post-stats{display:grid;gap:14px}
+.published-post-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.published-kpi{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fff}
+.published-kpi span{display:block;font-size:8px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.published-kpi strong{display:block;font-size:17px;color:#111827;margin-top:5px}
+.published-kpi small{font-size:8px;color:#94a3b8}
+.published-post-meta{border:1px solid #e5e7eb;border-radius:10px;padding:4px 11px}
+.published-post-meta>div{display:grid;grid-template-columns:100px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9}
+.published-post-meta>div:last-child{border-bottom:0}.published-post-meta span{font-size:8px;color:#64748b;text-transform:uppercase;font-weight:700}.published-post-meta strong{font-size:9px;overflow:hidden;text-overflow:ellipsis}
+.published-post-link{display:block;text-align:center;text-decoration:none}
+.activate-inbox-btn{white-space:nowrap}
+
+@media(max-width:800px){
+  .published-post-card{width:96vw;padding:12px}
+  .published-post-layout{grid-template-columns:1fr}
+  .published-post-embed{min-height:480px}
+  .published-social-frame{height:520px}
+}
