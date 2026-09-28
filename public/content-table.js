@@ -67,9 +67,10 @@ function cell(r,k){
   if(k==='platform') return `<span class="platform-chip">${esc(platformLabel(r.platform))}</span>`;
   if(k==='account') return esc(r.account_username||'—');
   if(k==='status') return `<span class="status-chip ${statusClass(r.status)}">${esc(r.status||'—')}</span>`;
-  if(['views','likes','comments','shares','saves','engagements','link_clicks','inbound_dms','dm_threads'].includes(k)) return fmt(r[k]||0);
+  if(['views','likes','comments','shares','saves','engagements'].includes(k)) return r[k]===null||r[k]===undefined ? '<span class="metric-unavailable" title="Metric not available with the current platform permission">—</span>' : fmt(r[k]);
+  if(['link_clicks','inbound_dms','dm_threads'].includes(k)) return fmt(r[k]||0);
   if(k==='primary_result') return `<div class="primary-result-cell"><strong>${fmt(r.primary_result||0)}</strong><span>${esc(r.primary_result_label||'Result')}</span></div>`;
-  if(k==='engagement_rate') return Number(r.engagement_rate||0).toFixed(2)+'%';
+  if(k==='engagement_rate') return r.engagement_rate===null||r.engagement_rate===undefined ? '<span class="metric-unavailable">—</span>' : Number(r.engagement_rate).toFixed(2)+'%';
   if(k==='published_at') return dateShort(r.finished_at||r.created_at);
   if(k==='metrics_updated') return r.metrics_captured_at?dateShort(r.metrics_captured_at):'Not synced';
   if(k==='clip') return (r.external_post_url||r.external_post_id)
@@ -119,16 +120,16 @@ function render(){
   const eng=pub.reduce((n,x)=>n+Number(x.engagements||0),0);
   const clicks=pub.reduce((n,x)=>n+Number(x.link_clicks||0),0);
   const dms=pub.reduce((n,x)=>n+Number(x.inbound_dms||0),0);
-  const primary=pub.reduce((n,x)=>n+Number(x.primary_result||0),0);
+  const platform=$('content-platform-filter')?.value||'all';
+  const resultLabel=platform==='youtube_shorts'?'Link Clicks':platform==='instagram_reels'||platform==='facebook_page'||platform==='tiktok_video'||platform==='tiktok'?'DMs':'Primary Results';
+  const resultValue=platform==='youtube_shorts'?clicks:(platform==='all'?clicks+dms:dms);
   badge();renderManager();renderHead();
   $('content-summary').innerHTML=[
-    ['Published',pub.length,'green','▶'],
-    ['Views',views,'orange','↗'],
-    ['Primary Results',primary,'purple','◆'],
-    ['Link Clicks',clicks,'blue','↗'],
-    ['DMs',dms,'cyan','✉'],
-    ['Eng. Rate',views?(eng/views*100).toFixed(2)+'%':'0.00%','orange','%']
-  ].map(x=>`<div class="stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${typeof x[1]==='string'?esc(x[1]):fmt(x[1])}</strong><span>${x[0]}</span></div></div>`).join('');
+    ['Views',views,'orange','◉'],
+    [resultLabel,resultValue,'purple','◆'],
+    ['Published Clips',pub.length,'green','▤'],
+    ['Engagements',eng,'cyan','↗']
+  ].map(x=>`<div class="stat-card whop-stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${fmt(x[1])}</strong><span>${esc(x[0])}</span></div></div>`).join('');
   const cols=visible(); $('content-table-meta').textContent=`${rows.length} rows · ${cols.length} visible columns · drag headers to reorder`;
   $('content-table').innerHTML=rows.length?rows.map(r=>'<tr>'+cols.map(x=>`<td data-column="${x.key}" style="width:${x.width}px;min-width:${x.width}px;max-width:${x.width}px">${cell(r,x.key)}</td>`).join('')+'</tr>').join(''):`<tr><td class="empty-row" colspan="${Math.max(1,cols.length)}">No content matches the current filters.</td></tr>`;
   document.querySelectorAll('.content-preview').forEach(button=>{
