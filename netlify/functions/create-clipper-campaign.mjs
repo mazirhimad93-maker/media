@@ -1,5 +1,4 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
-const WRITE_KEY='alchemic2026';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 const slugify=s=>String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,90);
 const directMedia=url=>/\.(mp4|m4v|mov|webm)(?:$|[?#])/i.test(url);
 const provider=url=>{
@@ -15,8 +14,8 @@ const provider=url=>{
 
 export default async request=>{
   try{
+    await requireUser(request);
     if(request.method!=='POST') return jsonResponse({error:'Method not allowed'},405);
-    if((request.headers.get('x-media-password')||'')!==WRITE_KEY) return jsonResponse({error:'Invalid media password'},401);
 
     const body=await request.json();
     const name=String(body.name||'').trim();
