@@ -42,11 +42,19 @@ export function requireAdmin(request) {
 }
 
 export function verifyMetaSignature(rawBody, signatureHeader) {
-  const secret = process.env.INSTAGRAM_APP_SECRET?.trim();
-  if (!secret) return true;
+  const secrets = [
+    process.env.FACEBOOK_APP_SECRET?.trim(),
+    process.env.META_APP_SECRET?.trim(),
+    process.env.INSTAGRAM_APP_SECRET?.trim(),
+  ].filter(Boolean);
+
+  if (!secrets.length) return true;
   if (!signatureHeader?.startsWith('sha256=')) return false;
-  const expected = `sha256=${crypto.createHmac('sha256', secret).update(rawBody).digest('hex')}`;
-  return safeEqual(signatureHeader, expected);
+
+  return secrets.some((secret) => {
+    const expected = `sha256=${crypto.createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+    return safeEqual(signatureHeader, expected);
+  });
 }
 
 const b64url = (value) => Buffer.from(value).toString('base64url');
@@ -80,6 +88,7 @@ export function callbacks(request) {
   return {
     youtube: `${origin}/oauth/youtube/callback`,
     instagram: `${origin}/oauth/instagram/callback`,
+    facebook: `${origin}/oauth/facebook/callback`,
     metaWebhook: `${origin}/api/meta/webhook`,
   };
 }
@@ -87,6 +96,7 @@ export function callbacks(request) {
 export const providerConfig = () => ({
   youtube: { ready: Boolean(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim()) },
   instagram: { ready: Boolean(process.env.INSTAGRAM_APP_ID?.trim() && process.env.INSTAGRAM_APP_SECRET?.trim()) },
+  facebook: { ready: Boolean(process.env.FACEBOOK_APP_ID?.trim() && (process.env.FACEBOOK_APP_SECRET?.trim() || process.env.META_APP_SECRET?.trim())) },
   outreachBridge: { ready: Boolean(process.env.OUTREACH_SUPABASE_URL?.trim() && process.env.OUTREACH_SUPABASE_SERVICE_ROLE_KEY?.trim()) },
 });
 
