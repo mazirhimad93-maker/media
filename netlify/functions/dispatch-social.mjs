@@ -18,6 +18,30 @@ async function sendInstagram(account, contact, job){
   return {messageId:data.message_id||null,raw:data};
 }
 
+async function sendFacebook(account, contact, job){
+  const version=process.env.FACEBOOK_API_VERSION?.trim()||'v26.0';
+  const endpoint=`https://graph.facebook.com/${version}/${encodeURIComponent(account.platform_account_id)}/messages`;
+  const recipientId=job.target_platform_id||contact.platform_user_id;
+  if(!recipientId) throw new Error('Facebook recipient PSID is missing');
+
+  const response=await fetch(endpoint,{
+    method:'POST',
+    headers:{
+      authorization:`Bearer ${account.access_token}`,
+      'content-type':'application/json'
+    },
+    body:JSON.stringify({
+      recipient:{id:recipientId},
+      messaging_type:'RESPONSE',
+      message:{text:job.body}
+    })
+  });
+
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||data?.error) throw new Error(data?.error?.message||`Facebook Messenger send failed (${response.status})`);
+  return {messageId:data.message_id||null,raw:data};
+}
+
 export default async (request)=>{
   try{
     requireAdmin(request); if(request.method!=='POST') throw Object.assign(new Error('POST required'),{status:405});
@@ -32,6 +56,7 @@ export default async (request)=>{
         const account=accounts?.[0],contact=contacts?.[0]; if(!account||!contact) throw new Error('Account or contact not found');
         let sent;
         if(account.platform==='instagram_reels') sent=await sendInstagram(account,contact,job);
+        else if(account.platform==='facebook_page') sent=await sendFacebook(account,contact,job);
         else throw new Error(`Outbound messaging not enabled yet for ${account.platform}`);
         const now=new Date().toISOString();
         await supabaseRequest(`social_outbox?id=eq.${encodeURIComponent(job.id)}`,{method:'PATCH',body:{status:'sent',platform_message_id:sent.messageId,last_error:null,sent_at:now,updated_at:now}});
