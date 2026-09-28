@@ -36,6 +36,11 @@ test('a manual reply claims only its own row and sends immediately',async()=>{
   assert.ok(calls.find(c=>c.path.includes('status=eq.pending')&&c.path.includes('workspace_id=eq.workspace-1')&&c.options?.method==='PATCH'));
   assert.ok(calls.find(c=>c.path.startsWith('social_outbox?')&&c.options?.body.status==='sent'));
   assert.ok(calls.find(c=>c.path==='social_messages'&&c.options?.body.platform_message_id==='meta-message-1'));
+  const conversationUpdate=calls.find(c=>c.path.startsWith('social_conversations?')&&c.options?.method==='PATCH');
+  assert.equal(conversationUpdate.options.body.unread_count,undefined);
+  const stageUpdate=calls.find(c=>c.path.startsWith('social_contacts?')&&c.options?.method==='PATCH');
+  assert.match(stageUpdate.path,/lead_status=eq\.new/);
+  assert.equal(stageUpdate.options.body.lead_status,'engaged');
 });
 
 test('Meta rejection is visible as failed and is not silently left pending',async()=>{

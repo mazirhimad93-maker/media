@@ -226,11 +226,11 @@ function renderInboxThreads() {
 
   $('inbox-thread-list').innerHTML = rows.length ? rows.map((row) => {
     const active = selected && selected.source === row.source && String(selected.id) === String(row.id);
-    return '<button class="inbox-thread ' + (active ? 'active' : '') + '" data-source="' + media.esc(row.source) + '" data-id="' + media.esc(row.id) + '">' +
+    return '<button class="inbox-thread ' + (active ? 'active ' : '') + (row.unread ? 'unread' : '') + '" data-source="' + media.esc(row.source) + '" data-id="' + media.esc(row.id) + '" aria-label="' + media.esc(row.name + (row.unread ? `, ${row.unread} unread message${row.unread === 1 ? '' : 's'}` : '')) + '">' +
       '<div class="inbox-thread-top"><strong>' + media.esc(row.name) + '</strong><span>' + dateLabel(row.at) + '</span></div>' +
       '<div class="inbox-thread-meta">' + media.esc(row.meta) + '</div>' +
       '<div class="inbox-thread-preview">' + media.esc(String(row.preview || '').slice(0, 130)) + '</div>' +
-      (row.unread ? '<b class="thread-unread">' + row.unread + '</b>' : '') +
+      (row.unread ? '<b class="thread-unread" aria-hidden="true">' + (row.unread > 1 ? row.unread : '') + '</b>' : '') +
       '</button>';
   }).join('') : '<div class="empty-list">No conversations yet.</div>';
 
@@ -253,6 +253,7 @@ async function loadInbox() {
 
     const unread = (media.state.inbox.social || []).reduce((n, x) => n + Number(x.unread_count || 0), 0);
     $('unread-pill').textContent = media.fmt(unread);
+    $('unread-pill').hidden = unread === 0;
   } catch (error) {
     $('inbox-thread-list').innerHTML = '<div class="empty-list">' + media.esc(error.message) + '</div>';
   }
@@ -373,7 +374,7 @@ async function syncInboxAccounts({ silent = false } = {}) {
   const message = $('inbox-sync-message');
 
   if (syncButton) syncButton.disabled = true;
-  if (message) {
+  if (message && !silent) {
     message.textContent = 'Pulling messages from connected inboxes…';
     message.className = 'connector-message';
   }
@@ -408,7 +409,7 @@ async function syncInboxAccounts({ silent = false } = {}) {
 
     const reconnect = (media.state.inbox.accounts || []).filter((a) => a.inbox_state === 'reconnect_required');
 
-    if (message) {
+    if (message && !silent) {
       if (failures.length) {
         message.textContent = `Imported ${totalInserted} messages from ${totalConversations} conversations. ${failures.length} account(s) need attention.`;
         message.className = 'connector-message error';
@@ -507,16 +508,23 @@ function renderConversation(forceScroll = false) {
 
 async function refreshConversation() {
   const selected = media.state.inbox.selected;
-  if (!selected || media.state.view !== 'inbox') return;
+  if (!selected || media.state.view !== 'inbox' || !document.querySelector('.inbox-layout')?.classList.contains('show-thread')) return;
   if (conversationFetch) return conversationFetch;
   const id = selected.id;
   conversationFetch = (async () => {
     try {
       const result = await media.api('/api/conversation?id=' + encodeURIComponent(id));
-      if (media.state.inbox.selected?.id !== id) return;
+      if (media.state.inbox.selected?.id !== id || media.state.view !== 'inbox' || !document.querySelector('.inbox-layout')?.classList.contains('show-thread')) return;
       media.state.inbox.conversation = result;
       $('conversation-lead-status').value = result.conversation?.lead_status || 'new';
       renderConversation();
+      const unreadCount = Number(result.conversation?.unread_count || 0);
+      if (unreadCount > 0 && result.conversation?.last_inbound_at) {
+        const read = await media.api('/api/conversation?id=' + encodeURIComponent(id), {
+          method: 'POST', body: { unreadCount, lastInboundAt: result.conversation.last_inbound_at }
+        });
+        if (read.marked_read) loadInbox();
+      }
     } catch (error) {
       if (!media.state.inbox.conversation && media.state.inbox.selected?.id === id) $('conversation-messages').innerHTML = `<div class="empty-list">${media.esc(error.message)}</div>`;
       // Keep the loaded conversation visible through a transient poll failure.
@@ -837,10 +845,12 @@ function bindUi() {
 
 setInterval(() => {
   if (!media?.state.auth.accessToken || document.hidden || media.state.view !== 'inbox') return;
-  if (media.state.inbox.selected) refreshConversation();
+  if (media.state.inbox.selected && document.querySelector('.inbox-layout')?.classList.contains('show-thread')) refreshConversation();
 }, 3500);
 setInterval(() => {
-  if (media?.state.auth.accessToken && !document.hidden && media.state.view === 'inbox') loadInbox();
+  if (!media?.state.auth.accessToken || document.hidden) return;
+  loadInbox();
+  if (media.state.view === 'leads') window.loadAlchemicLeads?.();
 }, 10000);
 
 document.addEventListener('click', (event) => {
