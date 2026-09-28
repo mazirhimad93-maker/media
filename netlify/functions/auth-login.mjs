@@ -24,7 +24,7 @@ export default async (request) => {
       access_token: session.access_token,
       expires_in: session.expires_in || 3600,
       user: { id: session.user.id, email: session.user.email },
-      profile,
+      profile: workspaceContext.membership?.role ? {...profile,role:workspaceContext.membership.role,default_workspace_id:workspaceContext.workspace?.id||profile.default_workspace_id||null} : profile,
       workspace: workspaceContext.workspace || null,
     }, 200, {
       'set-cookie': refreshCookie(session.refresh_token),
