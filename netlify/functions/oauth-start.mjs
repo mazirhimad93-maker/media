@@ -5,7 +5,7 @@ export default async (request) => {
     const { user } = await requireUser(request);
     const url = new URL(request.url);
     const provider = url.searchParams.get('provider');
-    if (!['youtube','instagram'].includes(provider)) throw Object.assign(new Error('Unsupported OAuth provider'), { status: 400 });
+    if (!['youtube','instagram','facebook'].includes(provider)) throw Object.assign(new Error('Unsupported OAuth provider'), { status: 400 });
     if (!providerConfig()[provider].ready) throw Object.assign(new Error(`${provider} app credentials are not configured`), { status: 409 });
     const state = signOAuthState({
       provider,
@@ -27,12 +27,24 @@ export default async (request) => {
         access_type: 'offline', prompt: 'consent select_account', include_granted_scopes: 'true', state,
       });
       authorizationUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-    } else {
+    } else if (provider === 'instagram') {
       const params = new URLSearchParams({
-        client_id: process.env.INSTAGRAM_APP_ID.trim(), redirect_uri: cb.instagram, response_type: 'code',
-        scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages', state,
+        client_id: process.env.INSTAGRAM_APP_ID.trim(),
+        redirect_uri: cb.instagram,
+        response_type: 'code',
+        scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages',
+        state,
       });
       authorizationUrl = `https://www.instagram.com/oauth/authorize?${params}`;
+    } else {
+      const params = new URLSearchParams({
+        client_id: process.env.FACEBOOK_APP_ID.trim(),
+        redirect_uri: cb.facebook,
+        response_type: 'code',
+        scope: 'pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging',
+        state,
+      });
+      authorizationUrl = `https://www.facebook.com/v26.0/dialog/oauth?${params}`;
     }
     return jsonResponse({ authorizationUrl });
   } catch (error) { return publicError(error, error.status || 500); }
