@@ -360,10 +360,22 @@
         <div class="section-top">
           <div><h2>DM Inbox</h2><p>Instagram and Facebook Page messages from your connected accounts.</p></div>
           <div class="filters">
-            
-            <button id="refresh-inbox" class="secondary-btn" type="button">Refresh inbox</button>
+            <button id="configure-inboxes" class="primary-inline-btn" type="button">Activate inboxes</button>
+            <button id="refresh-inbox" class="secondary-btn" type="button">Sync messages</button>
           </div>
         </div>
+
+        <article class="card inbox-health-card">
+          <div class="inbox-health-head">
+            <div>
+              <strong>Inbox connections</strong>
+              <span>Alchemic can activate messaging on existing connected channels when their stored token already has DM permission.</span>
+            </div>
+            <span id="inbox-health-summary" class="small-badge">Checking…</span>
+          </div>
+          <div id="inbox-channel-status" class="inbox-channel-status"></div>
+          <div id="inbox-sync-message" class="connector-message"></div>
+        </article>
 
         <div class="inbox-layout">
           <aside class="inbox-sidebar card">
