@@ -1,6 +1,4 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
-
-const TEMP_PASSWORD='alchemic2026';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 async function approveOne(rawId){
   let variantId=rawId.startsWith('asset:')?null:rawId;
@@ -60,9 +58,8 @@ async function approveOne(rawId){
 
 export default async (request) => {
   try {
+    await requireUser(request);
     if(request.method!=='POST') return jsonResponse({error:'Method not allowed'},405);
-    const supplied=request.headers.get('x-media-password')||'';
-    if(supplied!==TEMP_PASSWORD) return jsonResponse({error:'Invalid media password'},401);
 
     const body=await request.json().catch(()=>({}));
     const action=String(body.action||'').trim();
