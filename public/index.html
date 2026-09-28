@@ -246,7 +246,7 @@
 
       <section class="view" id="view-inbox">
         <div class="section-top">
-          <div><h2>DM Inbox</h2><p>Instagram direct messages from your connected professional accounts.</p></div>
+          <div><h2>DM Inbox</h2><p>Instagram and Facebook Page messages from your connected accounts.</p></div>
           <div class="filters">
             
             <button id="refresh-inbox" class="secondary-btn" type="button">Refresh inbox</button>
@@ -263,7 +263,7 @@
             <div id="inbox-empty" class="conversation-placeholder">
               <div class="large-icon">✉</div>
               <h3>Select a conversation</h3>
-              <p>Select an Instagram conversation to read and reply.</p>
+              <p>Select a social conversation to read and reply.</p>
             </div>
 
             <div id="inbox-conversation-wrap" hidden>
@@ -358,6 +358,10 @@
                 <span class="provider-logo instagram">IG</span>
                 <span><strong>Add Instagram</strong><small id="connect-instagram-status">Professional account</small></span>
               </button>
+              <button id="connect-facebook" class="connector-btn facebook-connect">
+                <span class="provider-logo facebook">FB</span>
+                <span><strong>Add Facebook Pages</strong><small id="connect-facebook-status">Page Messenger</small></span>
+              </button>
               <button id="connect-youtube" class="connector-btn youtube-connect">
                 <span class="provider-logo youtube">YT</span>
                 <span><strong>Add YouTube</strong><small id="connect-youtube-status">Channel OAuth</small></span>
@@ -373,6 +377,7 @@
 
         <div class="provider-grid">
           <article class="provider-card"><div class="provider-logo instagram">IG</div><div><strong>Instagram</strong><span id="ig-provider-status">Publishing connected</span></div></article>
+          <article class="provider-card"><div class="provider-logo facebook">FB</div><div><strong>Facebook Pages</strong><span id="fb-provider-status">Messenger connector</span></div></article>
           <article class="provider-card"><div class="provider-logo youtube">YT</div><div><strong>YouTube</strong><span id="yt-provider-status">Connector configured</span></div></article>
           <article class="provider-card"><div class="provider-logo tiktok">TT</div><div><strong>TikTok</strong><span>Publishing connected</span></div></article>
         </div>
