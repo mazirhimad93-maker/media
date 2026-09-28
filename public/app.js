@@ -1279,54 +1279,6 @@ async function syncExistingInbox(accountId,button){
   }
 }
 
-async function activateAllExistingInboxes(){
-  const button=$('activate-all-inboxes');
-  const accounts=(state.data?.accounts||[]).filter(account=>['instagram_reels','facebook_page','facebook'].includes(account.platform));
-  if(!accounts.length){channelActionMessage('Add an Instagram or Facebook Page channel first.');return;}
-
-  const reconnect=accounts.find(account=>account.inbox_state==='reconnect_required');
-  if(reconnect){
-    channelActionMessage(`Reconnecting @${reconnect.username||'account'} to grant DM access. Repeat for the remaining channels afterward.`);
-    await reconnectChannel(reconnect.id);
-    return;
-  }
-
-  const original=button?.textContent||'Activate DMs';
-  if(button){button.disabled=true;button.textContent='Activating…';}
-
-  let ready=0,failed=0,messages=0;
-  try{
-    for(const account of accounts){
-      try{
-        if(account.inbox_state!=='ready'){
-          await api('/api/channels/inbox/activate',{method:'POST',body:{accountId:account.id}});
-        }
-
-        try{
-          const sync=await api('/api/channels/inbox/sync',{method:'POST',body:{accountId:account.id}});
-          messages+=Number(sync.messages_inserted||0);
-        }catch{}
-
-        ready++;
-      }catch{
-        failed++;
-      }
-    }
-
-    channelActionMessage(
-        ready+' inbox'+(ready===1?'':'es')+' ready'+
-        (messages?' · '+messages+' messages imported':'')+
-        (failed?' · '+failed+' failed':''),failed?'error':'success');
-
-    await refreshChannelData();
-    if(window.loadAlchemicInbox) await window.loadAlchemicInbox();
-  }catch(error){
-    channelActionMessage(error.message,'error');
-  }finally{
-    if(button){button.disabled=false;button.textContent=original;}
-  }
-}
-
 async function saveChannelLimit(accountId){
   const input=[...document.querySelectorAll('.channel-daily-limit')].find(el=>el.dataset.id===accountId);
   if(!input) return;
@@ -1659,5 +1611,3 @@ window.__alchemic={
 };
 window.connectAlchemicChannel=reconnectChannel;
 window.dispatchEvent(new Event('alchemic-ready'));
-
-$('activate-all-inboxes')?.addEventListener('click',activateAllExistingInboxes);
