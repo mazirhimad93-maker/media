@@ -208,38 +208,113 @@
       </section>
 
       <section class="view" id="view-content">
-        <div class="section-top">
-          <div><h2>Content & Distribution</h2><p>Every queued and published post, including the external result URL.</p></div>
-          <div class="filters">
-            <button id="sync-metrics" class="secondary-btn">Sync metrics</button>
-            <select id="content-campaign-filter"><option value="all">All campaigns</option></select>
-            <select id="content-date-filter">
-              <option value="all">All dates</option>
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-            </select>
-            <select id="content-status-filter">
-              <option value="all">All statuses</option>
-              <option value="done">Published</option>
-              <option value="ready">Ready</option>
-              <option value="running">Running</option>
-              <option value="failed">Failed</option>
-            </select>
-            <select id="content-platform-filter">
-              <option value="all">All platforms</option>
-              <option value="instagram_reels">Instagram</option>
-              <option value="youtube_shorts">YouTube</option>
-              <option value="tiktok_video">TikTok</option>
-              <option value="tiktok">TikTok legacy</option>
-            </select>
+        <div class="section-top content-section-top">
+          <div>
+            <h2>Content & Distribution</h2>
+            <p>Published content, live performance, platform URLs and distribution results.</p>
+          </div>
+
+          <div class="content-toolbar">
+            <div class="content-toolbar-group">
+              <button id="content-filter-button" class="secondary-btn toolbar-button" type="button">
+                Filters <span id="content-filter-count" class="toolbar-count" hidden>0</span>
+              </button>
+              <button id="content-columns-button" class="secondary-btn toolbar-button" type="button">Columns</button>
+            </div>
+
+            <div id="content-filter-panel" class="content-popover filter-popover" hidden>
+              <div class="popover-head">
+                <div><strong>Filters</strong><span>Choose what content you want to analyze.</span></div>
+                <button id="close-content-filters" class="icon-close" type="button">×</button>
+              </div>
+              <div class="content-filter-grid">
+                <label>
+                  <span>Campaign</span>
+                  <select id="content-campaign-filter"><option value="all">All campaigns</option></select>
+                </label>
+                <label>
+                  <span>Date</span>
+                  <select id="content-date-filter">
+                    <option value="all">All dates</option>
+                    <option value="1">Today</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select id="content-status-filter">
+                    <option value="all">All statuses</option>
+                    <option value="done">Published</option>
+                    <option value="ready">Ready</option>
+                    <option value="running">Running</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Platform</span>
+                  <select id="content-platform-filter">
+                    <option value="all">All platforms</option>
+                    <option value="instagram_reels">Instagram</option>
+                    <option value="facebook_page">Facebook</option>
+                    <option value="youtube_shorts">YouTube</option>
+                    <option value="tiktok_video">TikTok</option>
+                    <option value="tiktok">TikTok legacy</option>
+                  </select>
+                </label>
+              </div>
+              <div class="popover-actions">
+                <button id="reset-content-filters" class="text-btn" type="button">Reset filters</button>
+              </div>
+            </div>
+
+            <div id="content-columns-panel" class="content-popover columns-popover" hidden>
+              <div class="popover-head">
+                <div><strong>Customize columns</strong><span>Show, hide and reorder performance columns.</span></div>
+                <button id="close-content-columns" class="icon-close" type="button">×</button>
+              </div>
+              <div id="content-columns-list" class="column-manager-list"></div>
+              <div class="popover-actions">
+                <button id="reset-content-columns" class="text-btn" type="button">Reset columns</button>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="stats-grid compact" id="content-summary"></div>
-        <article class="card">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Content</th><th>Platform</th><th>Account</th><th>Status</th><th>Views</th><th>Comments</th><th>Clip</th><th>Result URL</th><th>Error</th></tr></thead>
+
+        <article class="card content-performance-card">
+          <div class="card-head content-chart-head">
+            <div>
+              <h2>Performance Trend</h2>
+              <p id="content-chart-subtitle">Growth captured from platform metrics.</p>
+            </div>
+            <div class="content-chart-actions">
+              <span id="content-metrics-status" class="metrics-sync-status">Metrics ready</span>
+              <button id="sync-metrics" class="text-btn" type="button">Sync now</button>
+              <select id="content-chart-metric" aria-label="Chart metric">
+                <option value="views">Views gained</option>
+                <option value="engagements">Engagements gained</option>
+                <option value="likes">Likes gained</option>
+                <option value="comments">Comments gained</option>
+                <option value="shares">Shares gained</option>
+                <option value="saves">Saves gained</option>
+              </select>
+            </div>
+          </div>
+          <div id="content-chart" class="content-chart"></div>
+          <div class="stats-grid compact content-kpi-grid" id="content-summary"></div>
+        </article>
+
+        <article class="card content-table-card">
+          <div class="card-head content-table-card-head">
+            <div>
+              <h2>Published Content</h2>
+              <p id="content-table-meta">Resize columns from the headers. Use Columns to reorder or hide fields.</p>
+            </div>
+          </div>
+          <div class="table-wrap content-table-wrap">
+            <table id="content-performance-table" class="resizable-table">
+              <thead id="content-table-head"></thead>
               <tbody id="content-table"></tbody>
             </table>
           </div>
