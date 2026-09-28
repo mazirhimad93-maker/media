@@ -51,7 +51,18 @@ async function sourceHistoryFor(account,sourceExternalPostId){
 }
 
 async function upsertConversation({account,contact,threadId,sourceExternalPostId=null,metadata={}}){
-  const sourceHistoryId=await sourceHistoryFor(account,sourceExternalPostId);
+  const existing=await supabaseRequest(
+    'social_conversations?account_id=eq.'+encodeURIComponent(account.id)+
+    '&platform_thread_id=eq.'+encodeURIComponent(threadId)+
+    '&select=id,source_history_id,source_external_post_id,metadata&limit=1'
+  ).catch(()=>[]);
+
+  const sourceHistoryId=sourceExternalPostId
+    ? await sourceHistoryFor(account,sourceExternalPostId)
+    : existing?.[0]?.source_history_id||null;
+
+  const preservedExternal=sourceExternalPostId||existing?.[0]?.source_external_post_id||null;
+
   const rows=await supabaseRequest('social_conversations?on_conflict=account_id,platform_thread_id',{
     method:'POST',
     headers:{Prefer:'resolution=merge-duplicates,return=representation'},
@@ -61,10 +72,10 @@ async function upsertConversation({account,contact,threadId,sourceExternalPostId
       platform:account.platform,
       platform_thread_id:threadId,
       source_history_id:sourceHistoryId,
-      source_external_post_id:sourceExternalPostId,
+      source_external_post_id:preservedExternal,
       status:'open',
       last_message_at:new Date().toISOString(),
-      metadata,
+      metadata:{...(existing?.[0]?.metadata||{}),...metadata},
       ...(account.workspace_id?{workspace_id:account.workspace_id}:{})
     }
   });
