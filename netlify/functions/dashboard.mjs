@@ -1,17 +1,16 @@
-import { jsonResponse, outreachRequest, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 const sum=(rows,key)=>(rows||[]).reduce((n,r)=>n+Number(r?.[key]||0),0);
 
 export default async (request) => {
   try {
     await requireUser(request);
-    const [posts,inbox,contacts,outbox,funnelLeads,emailReplies] = await Promise.all([
+    const [posts,inbox,contacts,outbox,funnelLeads] = await Promise.all([
       supabaseRequest('v_social_post_performance?select=*&order=views.desc&limit=200').catch(()=>[]),
       supabaseRequest('v_social_inbox?select=conversation_id,platform,unread_count&limit=500').catch(()=>[]),
       supabaseRequest('social_contacts?select=id,lead_status,platform&limit=5000').catch(()=>[]),
       supabaseRequest('social_outbox?select=id,status&limit=5000').catch(()=>[]),
       supabaseRequest('funnel_leads?select=id,status,source,utm_source,created_at&order=created_at.desc&limit=5000').catch(()=>[]),
-      outreachRequest('conversation_history?channel=eq.email&from_role=eq.lead&select=id&limit=1000').catch(()=>null),
     ]);
 
     const summary={
@@ -29,7 +28,6 @@ export default async (request) => {
       qualified_social:(contacts||[]).filter(x=>['qualified','registered','booked','client'].includes(x.lead_status)).length,
       pending_social_replies:(outbox||[]).filter(x=>x.status==='pending').length,
       funnel_leads:(funnelLeads||[]).length,
-      email_human_replies:(emailReplies||[]).length,
     };
 
     const byPlatform={};
@@ -52,7 +50,6 @@ export default async (request) => {
       summary,
       platforms:Object.values(byPlatform),
       topPosts:(posts||[]).slice(0,50),
-      outreachBridge:Boolean(emailReplies),
       previewMode:true
     });
   } catch(error){
