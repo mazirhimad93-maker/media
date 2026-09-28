@@ -1,4 +1,4 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 const safe=async path=>supabaseRequest(path).catch(()=>[]);
 const obj=v=>{
@@ -112,8 +112,9 @@ function jobFrom(source,variants,renderMedian){
   };
 }
 
-export default async () => {
+export default async (request) => {
   try{
+    await requireUser(request);
     const [campaigns,sources,variants] = await Promise.all([
       safe('distribution_campaigns?select=id,name,slug,status,clip_preset_slug,clip_preset_version,created_at,updated_at&order=updated_at.desc&limit=150'),
       safe('campaign_sources?select=id,campaign_id,title,status,source_type,operation_mode,clip_preset_slug,clip_preset_version,duration_seconds,error_message,metadata,created_at,updated_at&order=updated_at.desc&limit=700'),
