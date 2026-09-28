@@ -1142,6 +1142,24 @@ function renderAccounts(){
       const remaining=account.daily_remaining==null?'∞':fmt(account.daily_remaining);
       const percent=Number(account.daily_usage_percent||0);
 
+      const inboxCell=account.inbox_state==='ready'
+        ? '<span class="status-chip status-approved">Ready</span>'
+        : account.inbox_state==='activate'
+          ? `<button class="activate-inbox-btn open-btn" data-id="${esc(account.id)}" type="button">Activate inbox</button>`
+          : account.inbox_state==='reconnect_required'
+            ? '<span class="status-chip status-running">Reconnect required</span>'
+            : '—';
+
+      const analyticsCell=account.platform==='instagram_reels'
+        ? (account.insights_permission
+            ? '<span class="status-chip status-approved">Insights ready</span>'
+            : '<span class="status-chip status-running">Reconnect for Insights</span>')
+        : account.platform==='youtube_shorts'
+          ? (account.insights_permission
+              ? '<span class="status-chip status-approved">Daily analytics</span>'
+              : '<span class="status-chip status-other">Totals only</span>')
+          : '—';
+
       return `
         <tr>
           <td><strong>${esc(account.username||account.display_name||'Unnamed')}</strong></td>
@@ -1162,7 +1180,8 @@ function renderAccounts(){
           <td>${remaining}</td>
           <td>${fmt(account.total_published||0)}</td>
           <td>${fmt(account.queued_now||0)}</td>
-          <td>${caps.messages_read||caps.messages_send?'Enabled':'—'}</td>
+          <td>${inboxCell}</td>
+          <td>${analyticsCell}</td>
           <td>${esc(account.webhook_status||'not configured')}</td>
         </tr>
       `;
@@ -1172,12 +1191,39 @@ function renderAccounts(){
   document.querySelectorAll('.save-channel-limit').forEach(button=>{
     button.onclick=()=>saveChannelLimit(button.dataset.id);
   });
+  document.querySelectorAll('.activate-inbox-btn').forEach(button=>{
+    button.onclick=()=>activateExistingInbox(button.dataset.id,button);
+  });
 }
 
 async function refreshChannelData(){
   const offset=new Date().getTimezoneOffset();
   state.data=await api(`/api/data?tzOffsetMinutes=${encodeURIComponent(offset)}`);
   renderAccounts();
+}
+
+async function activateExistingInbox(accountId,button){
+  const original=button?.textContent||'Activate inbox';
+  if(button){button.disabled=true;button.textContent='Activating…';}
+  try{
+    const result=await api('/api/channels/inbox/activate',{
+      method:'POST',
+      body:{accountId}
+    });
+    if($('connector-message')){
+      $('connector-message').textContent=result.state==='ready'
+        ? 'Inbox activated with the existing account token. No reconnect was needed.'
+        : 'Inbox activation needs attention.';
+      $('connector-message').className=result.state==='ready'?'connector-message success':'connector-message';
+    }
+    await refreshChannelData();
+  }catch(error){
+    if($('connector-message')){
+      $('connector-message').textContent=error.message;
+      $('connector-message').className='connector-message error';
+    }
+    if(button){button.disabled=false;button.textContent=original;}
+  }
 }
 
 async function saveChannelLimit(accountId){
