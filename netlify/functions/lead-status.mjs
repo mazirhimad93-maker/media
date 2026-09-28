@@ -1,4 +1,61 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+
 const allowed=new Set(['new','engaged','qualified','registered','booked','client','not_fit','archived']);
 const eventFor={qualified:'lead_qualified',registered:'webinar_registered',booked:'call_booked',client:'client_won'};
-export default async(request)=>{try{await requireUser(request);if(request.method!=='POST')throw Object.assign(new Error('POST required'),{status:405});const input=await request.json();const conversationId=String(input.conversationId||'');const status=String(input.status||'');if(!conversationId||!allowed.has(status))throw Object.assign(new Error('Valid conversationId and status are required'),{status:400});const rows=await supabaseRequest(`social_conversations?id=eq.${encodeURIComponent(conversationId)}&select=id,contact_id,account_id,platform,source_history_id&limit=1`);const c=rows?.[0];if(!c)throw Object.assign(new Error('Conversation not found'),{status:404});await supabaseRequest(`social_contacts?id=eq.${encodeURIComponent(c.contact_id)}`,{method:'PATCH',body:{lead_status:status,updated_at:new Date().toISOString()}});const conversationStatus=status==='booked'?'booked':status==='qualified'?'qualified':['client','archived','not_fit'].includes(status)?'closed':'open';await supabaseRequest(`social_conversations?id=eq.${encodeURIComponent(c.id)}`,{method:'PATCH',body:{status:conversationStatus,updated_at:new Date().toISOString()}});if(eventFor[status])await supabaseRequest('growth_events',{method:'POST',body:{event_type:eventFor[status],platform:c.platform,source:'manual_status',history_id:c.source_history_id||null,account_id:c.account_id,social_contact_id:c.contact_id,social_conversation_id:c.id,metadata:{lead_status:status}}}).catch(()=>{});return jsonResponse({ok:true,status})}catch(error){return publicError(error,error.status||500)}};
+
+export default async(request)=>{
+  try{
+    const {workspaceId}=await requireWorkspace(request);
+    if(request.method!=='POST') throw Object.assign(new Error('POST required'),{status:405});
+
+    const input=await request.json();
+    const conversationId=String(input.conversationId||'');
+    const status=String(input.status||'');
+    if(!conversationId||!allowed.has(status)) throw Object.assign(new Error('Valid conversationId and status are required'),{status:400});
+
+    const rows=await supabaseRequest(
+      scopedPath('social_conversations?id=eq.'+encodeURIComponent(conversationId)+'&select=id,contact_id,account_id,platform,source_history_id&limit=1',workspaceId)
+    );
+    const c=rows?.[0];
+    if(!c) throw Object.assign(new Error('Conversation not found'),{status:404});
+
+    await supabaseRequest(
+      scopedPath('social_contacts?id=eq.'+encodeURIComponent(c.contact_id),workspaceId),
+      {method:'PATCH',body:{lead_status:status,updated_at:new Date().toISOString()}}
+    );
+
+    const conversationStatus=status==='booked'
+      ? 'booked'
+      : status==='qualified'
+        ? 'qualified'
+        : ['client','archived','not_fit'].includes(status)
+          ? 'closed'
+          : 'open';
+
+    await supabaseRequest(
+      scopedPath('social_conversations?id=eq.'+encodeURIComponent(c.id),workspaceId),
+      {method:'PATCH',body:{status:conversationStatus,updated_at:new Date().toISOString()}}
+    );
+
+    if(eventFor[status]){
+      await supabaseRequest('growth_events',{
+        method:'POST',
+        body:{
+          event_type:eventFor[status],
+          platform:c.platform,
+          source:'manual_status',
+          history_id:c.source_history_id||null,
+          account_id:c.account_id,
+          social_contact_id:c.contact_id,
+          social_conversation_id:c.id,
+          metadata:{lead_status:status},
+          ...(workspaceId?{workspace_id:workspaceId}:{})
+        }
+      }).catch(()=>{});
+    }
+
+    return jsonResponse({ok:true,status});
+  }catch(error){
+    return publicError(error,error.status||500);
+  }
+};
