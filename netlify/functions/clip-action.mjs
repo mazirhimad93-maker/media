@@ -1,23 +1,23 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
-async function approveOne(rawId){
+async function approveOne(rawId,workspaceId){
   let variantId=rawId.startsWith('asset:')?null:rawId;
   let assetId=rawId.startsWith('asset:')?rawId.slice(6):null;
 
   if(variantId){
-    await supabaseRequest(`clip_variants?id=eq.${encodeURIComponent(variantId)}`,{
+    await supabaseRequest(scopedPath(`clip_variants?id=eq.${encodeURIComponent(variantId)}`,workspaceId),{
       method:'PATCH',
       headers:{Prefer:'return=representation'},
       body:{status:'approved',approved_at:new Date().toISOString(),updated_at:new Date().toISOString()}
     }).catch(async()=>{
-      await supabaseRequest(`clip_variants?id=eq.${encodeURIComponent(variantId)}`,{
+      await supabaseRequest(scopedPath(`clip_variants?id=eq.${encodeURIComponent(variantId)}`,workspaceId),{
         method:'PATCH',
         body:{status:'approved',updated_at:new Date().toISOString()}
       });
     });
 
     const assets=await supabaseRequest(
-      `content_assets?clip_variant_id=eq.${encodeURIComponent(variantId)}&select=*&order=created_at.desc&limit=1`
+      scopedPath(`content_assets?clip_variant_id=eq.${encodeURIComponent(variantId)}&select=*&order=created_at.desc&limit=1`,workspaceId)
     ).catch(()=>[]);
     assetId=assets?.[0]?.id||assetId;
   }
@@ -27,13 +27,13 @@ async function approveOne(rawId){
   }
 
   const approvedAt=new Date().toISOString();
-  await supabaseRequest(`content_assets?id=eq.${encodeURIComponent(assetId)}`,{
+  await supabaseRequest(scopedPath(`content_assets?id=eq.${encodeURIComponent(assetId)}`,workspaceId),{
     method:'PATCH',
     body:{media_publish_approved:true,media_approved_at:approvedAt,updated_at:approvedAt}
   });
 
   const heldRows=await supabaseRequest(
-    `content_publish_queue?asset_id=eq.${encodeURIComponent(assetId)}&media_approval_hold=eq.true&select=id,scheduled_at,next_attempt_at,media_original_scheduled_at,media_original_next_attempt_at`
+    scopedPath(`content_publish_queue?asset_id=eq.${encodeURIComponent(assetId)}&media_approval_hold=eq.true&select=id,scheduled_at,next_attempt_at,media_original_scheduled_at,media_original_next_attempt_at`,workspaceId)
   ).catch(()=>[]);
 
   for(const q of heldRows||[]){
@@ -41,7 +41,7 @@ async function approveOne(rawId){
     const originalNext=q.media_original_next_attempt_at ? new Date(q.media_original_next_attempt_at) : null;
     const releaseAt=original && original.getTime()>Date.now() ? original.toISOString() : approvedAt;
     const releaseNext=originalNext && originalNext.getTime()>Date.now() ? originalNext.toISOString() : null;
-    await supabaseRequest(`content_publish_queue?id=eq.${encodeURIComponent(q.id)}`,{
+    await supabaseRequest(scopedPath(`content_publish_queue?id=eq.${encodeURIComponent(q.id)}`,workspaceId),{
       method:'PATCH',
       body:{media_approval_hold:false,scheduled_at:releaseAt,next_attempt_at:releaseNext,updated_at:approvedAt}
     });
@@ -58,7 +58,7 @@ async function approveOne(rawId){
 
 export default async (request) => {
   try {
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     if(request.method!=='POST') return jsonResponse({error:'Method not allowed'},405);
 
     const body=await request.json().catch(()=>({}));
@@ -70,12 +70,12 @@ export default async (request) => {
       : [String(body.id||'').trim()].filter(Boolean);
 
     if(!ids.length) return jsonResponse({error:'At least one clip id is required'},400);
-    if(ids.length>100) return jsonResponse({error:'Bulk approval is limited to 100 clips at a time'},400);
+    if(ids.length>1000) return jsonResponse({error:'Bulk approval is limited to 1000 clips at a time'},400);
 
     const results=[];
     for(const id of ids){
       try{
-        results.push({id,...await approveOne(id)});
+        results.push({id,...await approveOne(id,workspaceId)});
       }catch(error){
         results.push({id,ok:false,error:error.message});
       }
