@@ -1,20 +1,18 @@
 const media=window.__alchemic;
 if(!media) throw new Error('Alchemic core unavailable');
 
-const {state,fmt}=media;
+const {state,fmt,platformLabel}=media;
 const $=id=>document.getElementById(id);
 
 const metricLabels={
-  views:'Daily views',
-  link_clicks:'Link clicks',
-  inbound_dms:'DMs received',
-  dm_threads:'DM threads',
-  engagements:'Engagements gained',
-  likes:'Likes gained',
-  comments:'Comments gained',
-  shares:'Shares gained',
-  saves:'Saves gained'
+  views:'Views',
+  results:'Results',
+  likes:'Likes',
+  comments:'Comments',
+  shares:'Shares'
 };
+
+const ui={metric:'views',mode:'cumulative'};
 
 function currentRows(){
   return window.__alchemicContentTable?.filteredRows?.() || state.content?.rows || [];
@@ -24,6 +22,11 @@ function filteredPoints(){
   const rows=currentRows();
   const queueIds=new Set(rows.map(x=>x.queue_id));
   return (state.content?.activity_points||state.content?.metric_points||[]).filter(p=>queueIds.has(p.queue_id));
+}
+
+function pointValue(point,metric){
+  if(metric==='results') return Number(point.link_clicks||0)+Number(point.inbound_dms||0);
+  return Number(point[metric]||0);
 }
 
 function dayKey(value){
@@ -38,19 +41,21 @@ function dailySeries(metric){
   for(const p of filteredPoints()){
     const day=dayKey(p.occurred_at||p.captured_at);
     if(!day) continue;
-    map.set(day,(map.get(day)||0)+Number(p[metric]||0));
+    map.set(day,(map.get(day)||0)+pointValue(p,metric));
   }
 
   const days=[...map.keys()].sort();
   if(!days.length) return [];
 
-  // Fill missing dates so the graph has a real time axis instead of jumping.
   const start=new Date(days[0]+'T00:00:00');
   const end=new Date(days[days.length-1]+'T00:00:00');
   const out=[];
+  let running=0;
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
     const key=d.toISOString().slice(0,10);
-    out.push({day:key,value:Number(map.get(key)||0)});
+    const daily=Number(map.get(key)||0);
+    running+=daily;
+    out.push({day:key,value:ui.mode==='daily'?daily:running,daily,cumulative:running});
   }
   return out;
 }
