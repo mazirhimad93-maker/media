@@ -1,6 +1,18 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const safe = async (path) => supabaseRequest(path).catch(() => []);
+const obj=v=>{
+  if(v && typeof v==='object' && !Array.isArray(v)) return v;
+  if(typeof v==='string'){ try{return JSON.parse(v)}catch{} }
+  return {};
+};
+const firstUrl=(...values)=>{
+  for(const value of values.flat(Infinity)){
+    const s=String(value||'').trim();
+    if(/^https?:\/\//i.test(s)) return s;
+  }
+  return null;
+};
 
 export default async (request) => {
   try {
@@ -34,6 +46,35 @@ export default async (request) => {
       const published=queues.filter(q=>q.status==='done'||q.external_post_id||q.external_post_url);
       const pending=queues.filter(q=>!['done','failed'].includes(q.status));
       const campaignId=v?.campaign_id||asset?.campaign_id||null;
+      const creative=obj(v?.creative_spec);
+      const compliance=obj(v?.compliance_report);
+      const editReport=obj(compliance.edit_report);
+      const metadata=obj(asset?.metadata);
+      const renderUrl=firstUrl(
+        v?.render_url,
+        v?.rendered_url,
+        v?.output_url,
+        v?.final_url,
+        editReport.render_url,
+        editReport.output_url,
+        compliance.render_url,
+        compliance.output_url,
+        asset?.source_url,
+        asset?.url
+      );
+      const sourcePreviewUrl=firstUrl(
+        creative.source_url,
+        creative.canonical_media_url,
+        metadata.canonical_media_url,
+        metadata.resolved_source_url
+      );
+      const thumbnailUrl=firstUrl(
+        v?.thumbnail_url,
+        editReport.thumbnail_url,
+        compliance.thumbnail_url,
+        metadata.thumbnail_url
+      );
+
       return {
         id,
         campaign_id:campaignId,
@@ -42,7 +83,14 @@ export default async (request) => {
         hook:v?.hook||asset?.metadata?.hook||null,
         status:v?.status||asset?.status||'unknown',
         publishing_approved:asset ? (asset.media_publish_approved ?? true) : false,
-        render_url:v?.render_url||v?.rendered_url||asset?.source_url||null,
+        render_url:renderUrl,
+        render_status_url:v?.render_status_url||null,
+        render_job_id:v?.render_job_id||null,
+        thumbnail_url:thumbnailUrl,
+        source_preview_url:sourcePreviewUrl,
+        source_start_seconds:Number(creative.start_seconds||0)||0,
+        source_end_seconds:Number(creative.end_seconds||0)||null,
+        creative_spec:creative,
         duration_seconds:v?.duration_seconds||asset?.duration_seconds||asset?.duration_sec||null,
         created_at:v?.created_at||asset?.created_at||null,
         updated_at:v?.updated_at||asset?.updated_at||null,
