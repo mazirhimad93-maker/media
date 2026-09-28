@@ -1,4 +1,4 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const safe=async path=>supabaseRequest(path).catch(()=>[]);
 const obj=v=>{
@@ -114,11 +114,11 @@ function jobFrom(source,variants,renderMedian){
 
 export default async (request) => {
   try{
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     const [campaigns,sources,variants] = await Promise.all([
-      safe('distribution_campaigns?select=id,name,slug,status,clip_preset_slug,clip_preset_version,created_at,updated_at&order=updated_at.desc&limit=150'),
-      safe('campaign_sources?select=id,campaign_id,title,status,source_type,operation_mode,clip_preset_slug,clip_preset_version,duration_seconds,error_message,metadata,created_at,updated_at&order=updated_at.desc&limit=700'),
-      safe('clip_variants?select=id,campaign_id,source_id,title,hook,status,render_job_id,render_status_url,render_url,duration_seconds,error_message,approved_at,created_at,updated_at&order=updated_at.desc&limit=2000')
+      safe(scopedPath('distribution_campaigns?select=id,name,slug,status,clip_preset_slug,clip_preset_version,created_at,updated_at&order=updated_at.desc&limit=150',workspaceId)),
+      safe(scopedPath('campaign_sources?select=id,campaign_id,title,status,source_type,operation_mode,clip_preset_slug,clip_preset_version,duration_seconds,error_message,metadata,created_at,updated_at&order=updated_at.desc&limit=700',workspaceId)),
+      safe(scopedPath('clip_variants?select=id,campaign_id,source_id,title,hook,status,render_job_id,render_status_url,render_url,duration_seconds,error_message,approved_at,created_at,updated_at&order=updated_at.desc&limit=5000',workspaceId))
     ]);
 
     const historical=(variants||[])
