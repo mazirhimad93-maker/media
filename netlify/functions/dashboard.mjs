@@ -1,17 +1,26 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const sum=(rows,key)=>(rows||[]).reduce((n,r)=>n+Number(r?.[key]||0),0);
 
 export default async (request) => {
   try {
-    await requireUser(request);
-    const [posts,inbox,contacts,outbox,funnelLeads] = await Promise.all([
-      supabaseRequest('v_social_post_performance?select=*&order=views.desc&limit=200').catch(()=>[]),
-      supabaseRequest('v_social_inbox?select=conversation_id,platform,unread_count&limit=500').catch(()=>[]),
-      supabaseRequest('social_contacts?select=id,lead_status,platform&limit=5000').catch(()=>[]),
-      supabaseRequest('social_outbox?select=id,status&limit=5000').catch(()=>[]),
-      supabaseRequest('funnel_leads?select=id,status,source,utm_source,created_at&order=created_at.desc&limit=5000').catch(()=>[]),
+    const {workspaceId}=await requireWorkspace(request);
+
+    const [accounts,allPosts,allInbox,contacts,outbox,funnelLeads] = await Promise.all([
+      supabaseRequest(scopedPath('content_accounts?select=id,platform&limit=5000',workspaceId)).catch(()=>[]),
+      supabaseRequest('v_social_post_performance?select=*&order=views.desc&limit=5000').catch(()=>[]),
+      supabaseRequest('v_social_inbox?select=conversation_id,account_id,contact_id,platform,unread_count&limit=5000').catch(()=>[]),
+      supabaseRequest(scopedPath('social_contacts?select=id,lead_status,platform&limit=10000',workspaceId)).catch(()=>[]),
+      supabaseRequest(scopedPath('social_outbox?select=id,account_id,status&limit=10000',workspaceId)).catch(()=>[]),
+      supabaseRequest(scopedPath('funnel_leads?select=id,status,source,utm_source,created_at&order=created_at.desc&limit=10000',workspaceId)).catch(()=>[]),
     ]);
+
+    const accountIds=new Set((accounts||[]).map(a=>a.id));
+    const posts=(allPosts||[]).filter(p=>!workspaceId||accountIds.has(p.account_id));
+    const inbox=(allInbox||[]).filter(x=>!workspaceId||accountIds.has(x.account_id));
+    const contactIds=new Set((inbox||[]).map(x=>x.contact_id).filter(Boolean));
+    const scopedContacts=workspaceId?(contacts||[]).filter(x=>contactIds.has(x.id)):(contacts||[]);
+    const scopedOutbox=workspaceId?(outbox||[]).filter(x=>accountIds.has(x.account_id)):(outbox||[]);
 
     const summary={
       views:sum(posts,'views'),
@@ -24,9 +33,9 @@ export default async (request) => {
       content_leads:sum(posts,'leads'),
       social_conversations:(inbox||[]).length,
       social_unread:sum(inbox,'unread_count'),
-      social_contacts:(contacts||[]).length,
-      qualified_social:(contacts||[]).filter(x=>['qualified','registered','booked','client'].includes(x.lead_status)).length,
-      pending_social_replies:(outbox||[]).filter(x=>x.status==='pending').length,
+      social_contacts:(scopedContacts||[]).length,
+      qualified_social:(scopedContacts||[]).filter(x=>['qualified','registered','booked','client'].includes(x.lead_status)).length,
+      pending_social_replies:(scopedOutbox||[]).filter(x=>x.status==='pending').length,
       funnel_leads:(funnelLeads||[]).length,
     };
 
@@ -49,8 +58,7 @@ export default async (request) => {
     return jsonResponse({
       summary,
       platforms:Object.values(byPlatform),
-      topPosts:(posts||[]).slice(0,50),
-      previewMode:true
+      topPosts:(posts||[]).slice(0,50)
     });
   } catch(error){
     return publicError(error,error.status||500);
