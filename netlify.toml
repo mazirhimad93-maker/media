@@ -8,6 +8,9 @@
 [functions."refresh-instagram-tokens"]
   schedule = "0 3 * * *"
 
+[functions."metrics-scheduled"]
+  schedule = "0 * * * *"
+
 [[redirects]]
   from = "/api/auth/login"
   to = "/.netlify/functions/auth-login"
