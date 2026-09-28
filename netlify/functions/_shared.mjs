@@ -286,7 +286,7 @@ export function refreshCookie(value, maxAge = 60 * 60 * 24 * 30) {
 
 async function authApi(path, { method = 'GET', body, accessToken } = {}) {
   const base = required('SUPABASE_URL').replace(/\/$/, '');
-  const key = required('SUPABASE_SERVICE_ROLE_KEY');
+  const key = process.env.SUPABASE_AUTH_KEY?.trim() || process.env.SUPABASE_ANON_KEY?.trim() || required('SUPABASE_SERVICE_ROLE_KEY');
   const headers = {
     apikey: key,
     'content-type': 'application/json',
