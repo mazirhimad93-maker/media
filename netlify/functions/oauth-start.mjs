@@ -1,8 +1,8 @@
-import { callbacks, clampInt, jsonResponse, providerConfig, publicError, requireUser, signOAuthState } from './_shared.mjs';
+import { callbacks, clampInt, jsonResponse, providerConfig, publicError, requireWorkspace, signOAuthState } from './_shared.mjs';
 
 export default async (request) => {
   try {
-    const { user } = await requireUser(request);
+    const { user, workspaceId } = await requireWorkspace(request);
     const url = new URL(request.url);
     const provider = url.searchParams.get('provider');
     if (!['youtube','instagram','facebook'].includes(provider)) throw Object.assign(new Error('Unsupported OAuth provider'), { status: 400 });
@@ -15,6 +15,7 @@ export default async (request) => {
       weeklyLimit: clampInt(url.searchParams.get('weeklyLimit'), 0, 7000, 28),
       minGapMinutes: clampInt(url.searchParams.get('minGapMinutes'), 0, 10080, 60),
       connectedByUserId: user.id,
+      workspaceId,
     });
     const cb = callbacks(request);
     let authorizationUrl;
