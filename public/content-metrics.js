@@ -8,10 +8,11 @@ let syncing=false;
 let lastAttempt=0;
 const AUTO_INTERVAL=5*60*1000;
 
-function status(message,tone=''){
+function status(message,tone='',title=''){
   const el=$('content-metrics-status');
   if(!el) return;
   el.textContent=message;
+  el.title=title||'';
   el.className='metrics-sync-status'+(tone?' '+tone:'');
 }
 
@@ -58,21 +59,32 @@ async function sync({force=false,silent=false}={}){
     const content=await refreshContentOnly();
     const latest=content.summary?.latest_metrics_at||result.refreshed_at;
 
+    const topError=result.errors?.[0]?.error||'';
+    const reconnect=(result.analytics_accounts||[]).some(x=>x.status==='needs_reconnect');
+
     if(result.failed){
-      status(`Updated ${result.updated||0} · ${result.failed} failed`,'warning');
+      const friendly=/YouTube read credential|refresh token missing|YouTube OAuth/i.test(topError)
+        ? 'YouTube connection required'
+        : `${result.failed} posts need attention`;
+      status(
+        `${result.updated||0} refreshed · ${friendly}`,
+        'warning',
+        topError||'Some posts could not be refreshed.'
+      );
+    }else if(reconnect){
+      status(
+        `${result.updated||0} refreshed · reconnect YouTube for daily history`,
+        'warning',
+        'Current totals are available. Reconnect the YouTube channel once to grant Analytics access for historical daily views.'
+      );
     }else if(result.updated){
       status(`${result.updated} posts refreshed`,'success');
     }else{
       status(timeLabel(latest),'success');
     }
-
-    if(!silent&&result.failed){
-      alert(`Metrics refreshed, but ${result.failed} post${result.failed===1?'':'s'} could not be updated. The working posts were still saved.`);
-    }
   }catch(error){
-    status('Metrics sync failed','error');
-    if(!silent) alert(error.message);
-    else console.warn('Automatic metrics sync:',error);
+    status('Metrics sync failed','error',error.message);
+    console.warn('Metrics sync:',error);
   }finally{
     syncing=false;
     if(button){
