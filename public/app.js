@@ -188,8 +188,6 @@ function renderOverview(){
   $('clip-pending-badge').textContent=fmt(clips.summary?.needs_approval||0);
   $('unread-pill').textContent=fmt(s.social_unread||0);
 
-  $('email-bridge').textContent=dashboard.outreachBridge?'Connected, read only':'Not configured';
-  $('email-bridge').className=dashboard.outreachBridge?'ok':'pending';
 
   const byPlatform={};
   for(const row of published){
