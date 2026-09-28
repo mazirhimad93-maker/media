@@ -4,7 +4,7 @@ const failPage = (message) => htmlResponse(successPage({ title:'Instagram connec
 async function subscribeAccount(accountId, accessToken) {
   const version = process.env.INSTAGRAM_API_VERSION?.trim() || 'v26.0';
   const endpoint = new URL(`https://graph.instagram.com/${version}/${accountId}/subscribed_apps`);
-  endpoint.search = new URLSearchParams({ subscribed_fields:'messages,messaging_postbacks,comments,mentions', access_token:accessToken });
+  endpoint.search = new URLSearchParams({ subscribed_fields:'messages,messaging_postbacks', access_token:accessToken });
   const response = await fetch(endpoint, { method:'POST' });
   const data = await response.json().catch(() => ({}));
   return { ok: response.ok && data?.success !== false, data };
@@ -43,17 +43,17 @@ export default async (request) => {
 
     const expiresAt = new Date(Date.now()+Number(longToken.expires_in || 5184000)*1000).toISOString();
     const subscription = await subscribeAccount(String(accountId), longToken.access_token).catch((e)=>({ok:false,data:{message:e.message}}));
-    const scope = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments';
+    const scope = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages';
     const result = await upsertConnectedAccount({
       platform:'instagram_reels', platform_account_id:String(accountId), username:profile.username || String(accountId), display_name:profile.username || String(accountId),
       status:'active', is_active:true, health_status:'healthy', access_token:longToken.access_token, refresh_token:null, token_type:'Bearer', token_expires_at:expiresAt,
       scope, daily_limit:state.dailyLimit, weekly_limit:state.weeklyLimit, min_gap_minutes:state.minGapMinutes, error_message:null,
       webhook_status:subscription.ok ? 'subscribed' : 'needs_attention',
-      capabilities_json:{publish:true,comments_read:true,comments_reply:true,messages_read:true,messages_send:true,webhooks:subscription.ok},
+      capabilities_json:{publish:true,messages_read:true,messages_send:true,webhooks:subscription.ok},
       settings_json:{share_to_feed:true},
       metadata:{oauth_provider:'instagram',connected_at:new Date().toISOString(),instagram_scoped_id:profile.id || null,webhook_subscription:subscription.data}
     }, assignmentFromState(state));
 
-    return htmlResponse(successPage({title:'Instagram connected',message:subscription.ok?'Publishing, comments, inbox, and webhook permissions are connected.':'Account connected, but webhook subscription needs attention. Check Meta setup.',accounts:[{...result.saved,pool:result.pool}]}));
+    return htmlResponse(successPage({title:'Instagram connected',message:subscription.ok?'Publishing, DMs, and webhook permissions are connected.':'Account connected, but webhook subscription needs attention. Check Meta setup.',accounts:[{...result.saved,pool:result.pool}]}));
   } catch (error) { console.error(error); return failPage(error.message || 'Instagram connection could not be completed.'); }
 };
