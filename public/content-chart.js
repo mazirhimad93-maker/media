@@ -5,7 +5,10 @@ const {state,fmt}=media;
 const $=id=>document.getElementById(id);
 
 const metricLabels={
-  views:'Views gained',
+  views:'Daily views',
+  link_clicks:'Link clicks',
+  inbound_dms:'DMs received',
+  dm_threads:'DM threads',
   engagements:'Engagements gained',
   likes:'Likes gained',
   comments:'Comments gained',
@@ -20,7 +23,7 @@ function currentRows(){
 function filteredPoints(){
   const rows=currentRows();
   const queueIds=new Set(rows.map(x=>x.queue_id));
-  return (state.content?.metric_points||[]).filter(p=>queueIds.has(p.queue_id));
+  return (state.content?.activity_points||state.content?.metric_points||[]).filter(p=>queueIds.has(p.queue_id));
 }
 
 function dayKey(value){
@@ -33,7 +36,7 @@ function dayKey(value){
 function dailySeries(metric){
   const map=new Map();
   for(const p of filteredPoints()){
-    const day=dayKey(p.captured_at);
+    const day=dayKey(p.occurred_at||p.captured_at);
     if(!day) continue;
     map.set(day,(map.get(day)||0)+Number(p[metric]||0));
   }
@@ -88,7 +91,7 @@ function render(){
       <div class="chart-empty">
         <div class="chart-empty-icon">↗</div>
         <strong>No performance history yet</strong>
-        <span>The Media platform will pull stats from connected publishing accounts and build this graph automatically.</span>
+        <span>Views, clicks and attributed DMs will appear here as Media collects platform and conversion data.</span>
       </div>
     `;
     return;
