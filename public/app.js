@@ -1286,7 +1286,7 @@ $('sync-metrics').addEventListener('click',async()=>{
 });
 
 setInterval(()=>{
-  if(document.hidden) return;
+  if(document.hidden || !state.auth?.accessToken) return;
   refreshJobs();
 },10000);
 
