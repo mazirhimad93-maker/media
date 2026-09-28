@@ -283,29 +283,61 @@
         </div>
 
         <article class="card content-performance-card">
-          <div class="card-head content-chart-head">
-            <div>
-              <h2>Performance Trend</h2>
-              <p id="content-chart-subtitle">Growth captured from platform metrics.</p>
+          <div class="content-analytics-toolbar">
+            <div id="content-platform-tabs" class="content-platform-tabs">
+              <button class="content-platform-tab active" type="button" data-platform="all">All</button>
+              <button class="content-platform-tab" type="button" data-platform="youtube_shorts">YouTube</button>
+              <button class="content-platform-tab" type="button" data-platform="instagram_reels">Instagram</button>
+              <button class="content-platform-tab" type="button" data-platform="facebook_page">Facebook</button>
+              <button class="content-platform-tab" type="button" data-platform="tiktok_video">TikTok</button>
             </div>
-            <div class="content-chart-actions">
+            <div class="content-range-wrap">
               <span id="content-metrics-status" class="metrics-sync-status">Metrics ready</span>
               <button id="sync-metrics" class="text-btn" type="button">Sync now</button>
-              <select id="content-chart-metric" aria-label="Chart metric">
-                <option value="views">Daily views</option>
-                <option value="link_clicks">Link clicks</option>
-                <option value="inbound_dms">DMs received</option>
-                <option value="dm_threads">DM threads</option>
-                <option value="engagements">Engagements gained</option>
-                <option value="likes">Likes gained</option>
-                <option value="comments">Comments gained</option>
-                <option value="shares">Shares gained</option>
-                <option value="saves">Saves gained</option>
+              <select id="content-range-select" aria-label="Analytics timeline">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="all">All time</option>
               </select>
             </div>
           </div>
-          <div id="content-chart" class="content-chart"></div>
-          <div class="stats-grid compact content-kpi-grid" id="content-summary"></div>
+
+          <div class="content-kpi-grid whop-kpi-grid" id="content-summary"></div>
+
+          <div class="content-chart-shell">
+            <div class="content-chart-header">
+              <div class="content-chart-total">
+                <strong id="content-chart-total">0</strong>
+                <span id="content-chart-total-label">Views</span>
+              </div>
+
+              <div class="content-chart-controls">
+                <div id="content-metric-tabs" class="content-metric-tabs">
+                  <button type="button" class="content-metric-tab active" data-metric="views">Views</button>
+                  <button type="button" class="content-metric-tab" data-metric="results">Results</button>
+                  <button type="button" class="content-metric-tab" data-metric="likes">Likes</button>
+                  <button type="button" class="content-metric-tab" data-metric="comments">Comments</button>
+                  <button type="button" class="content-metric-tab" data-metric="shares">Shares</button>
+                </div>
+
+                <div id="content-chart-mode" class="content-chart-mode">
+                  <button type="button" class="content-mode-btn active" data-mode="cumulative">Cumulative</button>
+                  <button type="button" class="content-mode-btn" data-mode="daily">Daily</button>
+                </div>
+              </div>
+            </div>
+
+            <p id="content-chart-subtitle" class="content-chart-subtitle">Performance across your published content.</p>
+            <div id="content-chart" class="content-chart"></div>
+          </div>
+
+          <div class="content-platform-breakdown">
+            <div class="breakdown-head">
+              <h3 id="content-breakdown-title">Views by platform</h3>
+            </div>
+            <div id="content-platform-breakdown"></div>
+          </div>
         </article>
 
         <article class="card content-table-card">
