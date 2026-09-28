@@ -29,6 +29,8 @@ async function refreshYouTube(account){
     method:'PATCH',
     body:{access_token:data.access_token,token_expires_at:expiresAt,health_status:'healthy',updated_at:nowIso()}
   });
+  account.access_token=data.access_token;
+  account.token_expires_at=expiresAt;
   return data.access_token;
 }
 
@@ -178,14 +180,9 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
   for(const s of snapshots||[]) if(s.history_id&&!latestByHistory.has(s.history_id)) latestByHistory.set(s.history_id,s);
 
   const results=[];
-  let updated=0;
+  const due=[];
 
   for(const post of posts||[]){
-    if(updated>=maxUpdates){
-      results.push({queue_id:post.id,status:'deferred',reason:'update budget reached'});
-      continue;
-    }
-
     const h=historyByQueue.get(post.id);
     if(!h){
       results.push({queue_id:post.id,status:'skipped',error:'published history row missing'});
@@ -208,51 +205,129 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
       }
     }
 
-    try{
-      const m=await metricsFor(post,account);
-      const capturedAt=nowIso();
-      await supabaseRequest('post_metrics_snapshots',{
-        method:'POST',
-        body:{
-          history_id:h.id,
-          captured_at:capturedAt,
-          views:m.views,
-          likes:m.likes,
-          comments:m.comments,
-          shares:m.shares,
-          saves:m.saves,
-          raw_json:m.raw_json,
-          ...(workspaceId?{workspace_id:workspaceId}:{})
-        }
-      });
-      latestByHistory.set(h.id,{history_id:h.id,captured_at:capturedAt,...m});
-      updated++;
-      results.push({
-        history_id:h.id,
-        queue_id:post.id,
-        platform:account.platform,
-        status:'ok',
-        views:m.views,
-        likes:m.likes,
-        comments:m.comments,
-        shares:m.shares,
-        saves:m.saves,
-        captured_at:capturedAt
-      });
-    }catch(error){
-      results.push({
-        history_id:h.id,
-        queue_id:post.id,
-        platform:account.platform,
-        status:error.unsupported?'unsupported':'failed',
-        error:error.message
-      });
+    if(due.length>=maxUpdates){
+      results.push({queue_id:post.id,history_id:h.id,platform:account.platform,status:'deferred',reason:'update budget reached'});
+      continue;
     }
+
+    due.push({post,h,account});
+  }
+
+  const snapshotRows=[];
+  const success=(item,m)=>{
+    const capturedAt=nowIso();
+    snapshotRows.push({
+      history_id:item.h.id,
+      captured_at:capturedAt,
+      views:num(m.views),
+      likes:num(m.likes),
+      comments:num(m.comments),
+      shares:num(m.shares),
+      saves:num(m.saves),
+      raw_json:m.raw_json||{},
+      ...(workspaceId?{workspace_id:workspaceId}:{})
+    });
+    results.push({
+      history_id:item.h.id,
+      queue_id:item.post.id,
+      platform:item.account.platform,
+      status:'ok',
+      views:num(m.views),
+      likes:num(m.likes),
+      comments:num(m.comments),
+      shares:num(m.shares),
+      saves:num(m.saves),
+      captured_at:capturedAt
+    });
+  };
+
+  // YouTube supports up to 50 video IDs in one statistics request. Batch by
+  // publishing account so hundreds of Shorts do not become hundreds of API calls.
+  const youtubeGroups=new Map();
+  const other=[];
+  for(const item of due){
+    if(item.account.platform==='youtube_shorts'){
+      const list=youtubeGroups.get(item.account.id)||[];
+      list.push(item);
+      youtubeGroups.set(item.account.id,list);
+    }else{
+      other.push(item);
+    }
+  }
+
+  for(const group of youtubeGroups.values()){
+    const account=group[0].account;
+    try{
+      const token=await refreshYouTube(account);
+      for(let i=0;i<group.length;i+=50){
+        const batch=group.slice(i,i+50);
+        const url=new URL('https://www.googleapis.com/youtube/v3/videos');
+        url.search=new URLSearchParams({
+          part:'statistics',
+          id:batch.map(x=>x.post.external_post_id).join(',')
+        });
+        const response=await fetch(url,{headers:{authorization:'Bearer '+token}});
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok) throw new Error(data.error?.message||'YouTube metrics failed');
+
+        const byId=new Map((data.items||[]).map(v=>[String(v.id),v.statistics||{}]));
+        for(const item of batch){
+          const s=byId.get(String(item.post.external_post_id));
+          if(!s){
+            results.push({history_id:item.h.id,queue_id:item.post.id,platform:account.platform,status:'failed',error:'YouTube video statistics were not returned'});
+            continue;
+          }
+          success(item,{
+            views:num(s.viewCount),
+            likes:num(s.likeCount),
+            comments:num(s.commentCount),
+            shares:0,
+            saves:0,
+            raw_json:{item_id:item.post.external_post_id,statistics:s}
+          });
+        }
+      }
+    }catch(error){
+      for(const item of group){
+        results.push({history_id:item.h.id,queue_id:item.post.id,platform:account.platform,status:'failed',error:error.message});
+      }
+    }
+  }
+
+  // Instagram/Facebook metrics are per-media calls. Keep concurrency deliberately
+  // small so the platform is fast without creating an API-rate spike.
+  let cursor=0;
+  const workers=Array.from({length:Math.min(5,other.length)},async()=>{
+    while(cursor<other.length){
+      const index=cursor++;
+      const item=other[index];
+      try{
+        const m=await metricsFor(item.post,item.account);
+        success(item,m);
+      }catch(error){
+        results.push({
+          history_id:item.h.id,
+          queue_id:item.post.id,
+          platform:item.account.platform,
+          status:error.unsupported?'unsupported':'failed',
+          error:error.message
+        });
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  if(snapshotRows.length){
+    await supabaseRequest('post_metrics_snapshots',{
+      method:'POST',
+      body:snapshotRows
+    });
   }
 
   return {
     checked:(posts||[]).length,
-    updated,
+    due:due.length,
+    updated:snapshotRows.length,
     skipped:results.filter(x=>['fresh','skipped','deferred'].includes(x.status)).length,
     failed:results.filter(x=>x.status==='failed').length,
     unsupported:results.filter(x=>x.status==='unsupported').length,
