@@ -228,9 +228,20 @@ async function resolveInstagramMedia(post,account){
 }
 
 async function instagramMetrics(post,account){
-  const basic=await resolveInstagramMedia(post,account);
-  const mediaId=basic.id||post.external_post_id;
+  if(!account.access_token) throw new Error('Instagram access token missing');
+
   const version=process.env.INSTAGRAM_API_VERSION?.trim()||'v26.0';
+  const base='https://graph.instagram.com/'+version+'/'+encodeURIComponent(post.external_post_id);
+
+  const basicUrl=new URL(base);
+  basicUrl.search=new URLSearchParams({
+    fields:'like_count,comments_count,media_type,media_product_type',
+    access_token:account.access_token
+  });
+
+  const basicResponse=await fetch(basicUrl);
+  const basic=await basicResponse.json().catch(()=>({}));
+  if(!basicResponse.ok) throw new Error(basic.error?.message||'Instagram media lookup failed');
 
   const out={
     views:0,
@@ -238,34 +249,50 @@ async function instagramMetrics(post,account){
     comments:num(basic.comments_count),
     shares:0,
     saves:0,
-    raw_json:{resolved_media_id:mediaId,basic,insights:{}}
+    partial:false,
+    warning:null,
+    raw_json:{
+      basic,
+      insights_ok:false,
+      insights:{}
+    }
   };
 
-  const hasInsights=String(account.scope||'').includes('instagram_business_manage_insights');
-  if(!hasInsights){
-    out.raw_json.insights_status='permission_required';
-    return out;
-  }
-
-  const u=new URL('https://graph.instagram.com/'+version+'/'+encodeURIComponent(mediaId)+'/insights');
-  u.search=new URLSearchParams({
-    metric:'views,plays,saved,shares,total_interactions',
+  // Current Instagram media insights use views (not the retired plays metric)
+  // plus likes/comments/saved/shares/total_interactions.
+  const insightsUrl=new URL(base+'/insights');
+  insightsUrl.search=new URLSearchParams({
+    metric:'views,likes,comments,saved,shares,total_interactions',
     access_token:account.access_token
   });
 
-  const response=await fetch(u);
-  const data=await response.json().catch(()=>({}));
-  if(response.ok){
-    for(const metric of data.data||[]){
-      const value=metric.values?.[0]?.value ?? metric.total_value?.value ?? 0;
-      out.raw_json.insights[metric.name]=metric;
-      if((metric.name==='views'||metric.name==='plays')&&!out.views) out.views=num(value);
-      if(metric.name==='saved') out.saves=num(value);
-      if(metric.name==='shares') out.shares=num(value);
-    }
-  }else{
-    out.raw_json.insights_error=data.error||data;
+  const insightsResponse=await fetch(insightsUrl);
+  const insights=await insightsResponse.json().catch(()=>({}));
+
+  if(!insightsResponse.ok){
+    const message=insights.error?.message||'Instagram Insights permission is unavailable';
+    out.partial=true;
+    out.warning=/permission|scope|insufficient|oauth/i.test(message)
+      ? 'Instagram Insights permission missing. Reconnect this Instagram account once to grant instagram_business_manage_insights.'
+      : message;
+    out.raw_json.insights_error=insights;
+    return out;
   }
+
+  const values={};
+  for(const item of insights.data||[]){
+    const value=item.values?.[0]?.value ?? item.total_value?.value ?? 0;
+    values[item.name]=num(value);
+  }
+
+  out.views=num(values.views);
+  out.likes=values.likes!==undefined?num(values.likes):out.likes;
+  out.comments=values.comments!==undefined?num(values.comments):out.comments;
+  out.saves=num(values.saved);
+  out.shares=num(values.shares);
+  out.raw_json.insights_ok=true;
+  out.raw_json.insights=insights;
+  out.raw_json.total_interactions=num(values.total_interactions);
 
   return out;
 }
@@ -404,7 +431,8 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
       history_id:item.h.id,
       queue_id:item.post.id,
       platform:item.account.platform,
-      status:'ok',
+      status:m.partial?'partial':'ok',
+      warning:m.warning||null,
       views:num(m.views),
       likes:num(m.likes),
       comments:num(m.comments),
@@ -508,8 +536,8 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
 
   const errorCounts={};
   for(const x of results){
-    if(x.status!=='failed') continue;
-    const key=x.error||'Unknown metrics error';
+    if(!['failed','partial'].includes(x.status)) continue;
+    const key=x.error||x.warning||'Unknown metrics error';
     errorCounts[key]=(errorCounts[key]||0)+1;
   }
 
@@ -520,6 +548,7 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     daily_rows:dailyRows,
     skipped:results.filter(x=>['fresh','skipped','deferred'].includes(x.status)).length,
     failed:results.filter(x=>x.status==='failed').length,
+    partial:results.filter(x=>x.status==='partial').length,
     unsupported:results.filter(x=>x.status==='unsupported').length,
     analytics_accounts:analyticsAccounts,
     errors:Object.entries(errorCounts).map(([error,count])=>({error,count})).sort((a,b)=>b.count-a.count),
