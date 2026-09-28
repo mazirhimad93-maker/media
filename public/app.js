@@ -1253,6 +1253,54 @@ async function syncExistingInbox(accountId,button){
   }
 }
 
+async function activateAllExistingInboxes(){
+  const button=$('activate-all-inboxes');
+  const accounts=(state.data?.accounts||[]).filter(account=>['instagram_reels','facebook_page','facebook'].includes(account.platform));
+  if(!accounts.length) return;
+
+  const original=button?.textContent||'Activate DMs';
+  if(button){button.disabled=true;button.textContent='Activating…';}
+
+  let ready=0,reconnect=0,failed=0,messages=0;
+  try{
+    for(const account of accounts){
+      try{
+        if(account.inbox_state==='reconnect_required'){
+          reconnect++;
+          continue;
+        }
+
+        if(account.inbox_state!=='ready'){
+          await api('/api/channels/inbox/activate',{method:'POST',body:{accountId:account.id}});
+        }
+
+        try{
+          const sync=await api('/api/channels/inbox/sync',{method:'POST',body:{accountId:account.id}});
+          messages+=Number(sync.messages_inserted||0);
+        }catch{}
+
+        ready++;
+      }catch{
+        failed++;
+      }
+    }
+
+    if($('connector-message')){
+      $('connector-message').textContent=
+        ready+' inbox'+(ready===1?'':'es')+' ready'+
+        (messages?' · '+messages+' messages imported':'')+
+        (reconnect?' · '+reconnect+' account'+(reconnect===1?'':'s')+' need reconnect':'')+
+        (failed?' · '+failed+' failed':'');
+      $('connector-message').className=(failed||reconnect)?'connector-message':'connector-message success';
+    }
+
+    await refreshChannelData();
+    if(window.loadAlchemicInbox) await window.loadAlchemicInbox();
+  }finally{
+    if(button){button.disabled=false;button.textContent=original;}
+  }
+}
+
 async function saveChannelLimit(accountId){
   const input=[...document.querySelectorAll('.channel-daily-limit')].find(el=>el.dataset.id===accountId);
   if(!input) return;
@@ -1584,3 +1632,5 @@ window.__alchemic={
   renderSettings
 };
 window.dispatchEvent(new Event('alchemic-ready'));
+
+$('activate-all-inboxes')?.addEventListener('click',activateAllExistingInboxes);
