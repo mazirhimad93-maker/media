@@ -8,6 +8,7 @@ let localReplies = [];
 let pendingAttachment = null;
 let recordingSession = null;
 let recordingTimer = null;
+const receiptUpgradeAttempted = new Set();
 
 function waitForMedia() {
   if (window.__alchemic) {
@@ -65,7 +66,8 @@ async function showApp() {
   updateUserUi();
   await media.load();
   await loadInbox();
-  await loadInboxHealth();
+  const accounts = await loadInboxHealth();
+  enableReadReceipts(accounts);
   if (media.state.view === 'leads') window.loadAlchemicLeads?.();
 }
 
@@ -299,6 +301,8 @@ function renderInboxChannelHealth(accounts) {
           ? '<button class="text-btn inbox-reconnect" data-id="' + media.esc(account.id) + '" type="button">Reconnect DMs</button>'
           : account.inbox_state === 'activate'
             ? '<button class="text-btn inbox-activate-one" data-id="' + media.esc(account.id) + '" type="button">Activate inbox</button>'
+          : account.inbox_state === 'ready' && !account.read_receipts_subscribed
+            ? '<button class="text-btn inbox-activate-one" data-id="' + media.esc(account.id) + '" type="button">Enable seen</button>'
           : ''}
       </div>
     `;
@@ -311,19 +315,29 @@ function renderInboxChannelHealth(accounts) {
     };
   });
   host.querySelectorAll('.inbox-activate-one').forEach((button) => {
-    button.onclick = async () => {
-      button.disabled = true;
-      try {
-        await media.api('/api/channels/inbox/activate', { method:'POST', body:{ accountId:button.dataset.id } });
-        await loadInboxHealth();
-      } catch (error) {
-        const message = $('inbox-sync-message');
-        message.textContent = error.message;
-        message.className = 'connector-message error';
-        button.disabled = false;
-      }
-    };
+    button.onclick = () => activateInboxAccount(button.dataset.id, button);
   });
+}
+
+async function activateInboxAccount(id, button = null) {
+  if (button) button.disabled = true;
+  try {
+    await media.api('/api/channels/inbox/activate', { method:'POST', body:{ accountId:id } });
+    await loadInboxHealth();
+  } catch (error) {
+    const message = $('inbox-sync-message');
+    message.textContent = error.message;
+    message.className = 'connector-message error';
+    if (button) button.disabled = false;
+  }
+}
+
+async function enableReadReceipts(accounts) {
+  for (const account of accounts || []) {
+    if (account.inbox_state !== 'ready' || account.read_receipts_subscribed || receiptUpgradeAttempted.has(account.id)) continue;
+    receiptUpgradeAttempted.add(account.id);
+    await activateInboxAccount(account.id);
+  }
 }
 
 async function loadInboxHealth() {
@@ -441,6 +455,16 @@ function messageMedia(m) {
   return `<a class="chat-file" href="${url}" target="_blank" rel="noopener">↗ ${media.esc(attachment.name || 'Open attachment')}</a>`;
 }
 
+function shortTime(value) {
+  const date = new Date(value || 0);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function messageFallback(m) {
+  const labels = { image: 'Photo', video: 'Video', audio: 'Voice message', file: 'File', sticker: 'Sticker', share: 'Shared post' };
+  return labels[m.message_type || m.metadata?.attachment?.type] || 'Attachment';
+}
+
 function renderConversation(forceScroll = false) {
   const result = media.state.inbox.conversation || {};
   const deliveredIds = new Set((result.messages || []).filter((m) => m.direction === 'outbound' && m.platform_message_id).map((m) => m.platform_message_id));
@@ -458,14 +482,22 @@ function renderConversation(forceScroll = false) {
   const box = $('conversation-messages');
   const atBottom = forceScroll || box.scrollHeight - box.scrollTop - box.clientHeight < 90;
   const oldTop = box.scrollTop;
+  let lastDay = '';
   box.innerHTML = messages.length ? messages.map((m) => {
+    const day = m._time ? new Date(m._time).toDateString() : '';
+    const divider = day && day !== lastDay ? `<div class="chat-day">${media.esc(new Date(m._time).toLocaleDateString(undefined, { month:'short', day:'numeric' }))}</div>` : '';
+    lastDay = day;
     const stateText = m.delivery_status || m.status || '';
     const queued = m._kind !== 'message' && m.status !== 'sent';
     const mediaMarkup = messageMedia(m);
-    const text = m.body && (!mediaMarkup || !String(m.body).startsWith('[')) ? `<div class="message-text">${media.esc(m.body)}</div>` : '';
-    return `<div class="message-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${queued ? 'queued' : ''}">
-      ${mediaMarkup}${text || (!mediaMarkup ? '<div>Attachment</div>' : '')}
-      <small>${m._time ? new Date(m._time).toLocaleString() : ''}${stateText ? ' · ' + media.esc(stateText) : ''}</small>
+    const body = m.body === 'Attachment' ? messageFallback(m) : m.body;
+    const text = body && (!mediaMarkup || !String(body).startsWith('[')) ? `<div class="message-text">${media.esc(body)}</div>` : '';
+    const outbound = m.direction === 'outbound';
+    const status = outbound ? (stateText === 'read' || stateText === 'seen' ? 'Seen' : ['sent','delivered'].includes(stateText) ? 'Sent' : stateText === 'uploading' ? 'Uploading' : stateText === 'sending' ? 'Sending' : stateText === 'failed' ? 'Failed' : 'Pending') : '';
+    const mark = status === 'Seen' ? '✓✓' : status === 'Sent' ? '✓' : status === 'Failed' ? '!' : '…';
+    return `${divider}<div class="message-bubble ${outbound ? 'outbound' : 'inbound'} ${queued ? 'queued' : ''}">
+      ${mediaMarkup}${text || (!mediaMarkup ? `<div class="message-text">${messageFallback(m)}</div>` : '')}
+      <small class="message-meta"><time title="${media.esc(m._time ? new Date(m._time).toLocaleString() : '')}">${media.esc(shortTime(m._time))}</time>${outbound ? `<span class="message-check" title="${status}" aria-label="${status}">${mark}</span>` : ''}</small>
       ${m.last_error ? `<small class="delivery-error">Delivery error: ${media.esc(m.last_error)}</small>` : ''}
       ${m._kind === 'outbox' && ['pending', 'failed'].includes(m.status) ? `<button class="text-btn outbox-send-now" data-id="${media.esc(m.id)}" type="button">${m.status === 'failed' ? 'Retry' : 'Send now'}</button>` : ''}
     </div>`;
@@ -487,7 +519,7 @@ async function refreshConversation() {
       renderConversation();
     } catch (error) {
       if (!media.state.inbox.conversation && media.state.inbox.selected?.id === id) $('conversation-messages').innerHTML = `<div class="empty-list">${media.esc(error.message)}</div>`;
-      else $('composer-error').textContent = error.message;
+      // Keep the loaded conversation visible through a transient poll failure.
     }
   })();
   try { await conversationFetch; } finally { conversationFetch = null; }
@@ -503,6 +535,7 @@ async function openInboxThread(row) {
     localReplies = [];
     clearAttachment();
     $('conversation-reply-body').value = '';
+    resizeComposer();
     $('conversation-messages').innerHTML = '<div class="empty-list">Loading conversation…</div>';
   }
   renderInboxThreads();
@@ -583,7 +616,7 @@ async function sendReply(event) {
   };
   localReplies.push(local);
   renderConversation(true);
-  if (!attachment) $('conversation-reply-body').value = '';
+  if (!attachment) { $('conversation-reply-body').value = ''; resizeComposer(); }
   try {
     let uploaded;
     if (attachment) {
@@ -610,7 +643,7 @@ async function sendReply(event) {
   } catch (error) {
     localReplies = localReplies.filter((item) => item !== local);
     if (media.state.inbox.selected?.id === selected.id) renderConversation();
-    if (!attachment && media.state.inbox.selected?.id === selected.id) $('conversation-reply-body').value = body;
+    if (!attachment && media.state.inbox.selected?.id === selected.id) { $('conversation-reply-body').value = body; resizeComposer(); }
     if (media.state.inbox.selected?.id === selected.id) $('composer-error').textContent = error.message;
   } finally {
     button.disabled = false;
@@ -737,7 +770,14 @@ function insertEmoji(value) {
   input.value = input.value.slice(0, start) + value + input.value.slice(end);
   input.focus();
   input.setSelectionRange(start + value.length, start + value.length);
+  resizeComposer();
   $('composer-emoji-picker').hidden = true;
+}
+
+function resizeComposer() {
+  const input = $('conversation-reply-body');
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(96, Math.max(42, input.scrollHeight))}px`;
 }
 
 function bindUi() {
@@ -778,6 +818,7 @@ function bindUi() {
       $('conversation-reply-form').requestSubmit();
     }
   });
+  $('conversation-reply-body').addEventListener('input', resizeComposer);
   $('composer-file-button').addEventListener('click', () => $('composer-file-input').click());
   $('composer-file-input').addEventListener('change', (event) => stageAttachment(event.target.files[0]));
   $('composer-record-button').addEventListener('click', toggleRecording);

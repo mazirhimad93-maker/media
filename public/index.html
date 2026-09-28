@@ -358,6 +358,7 @@
               <tbody id="content-table"></tbody>
             </table>
           </div>
+          <div id="content-mobile-list" class="content-mobile-list"></div>
         </article>
       </section>
 
@@ -369,21 +370,21 @@
           </div>
         </div>
 
-        <article class="card inbox-health-card">
-          <div class="inbox-health-head">
-            <div>
-              <strong>Inbox connections</strong>
-              <span>Alchemic can activate messaging on existing connected channels when their stored token already has DM permission.</span>
-            </div>
+        <details class="card inbox-health-card">
+          <summary class="inbox-health-head">
+            <strong>Connections</strong>
             <span id="inbox-health-summary" class="small-badge">Checking…</span>
+          </summary>
+          <div class="inbox-health-details">
+            <p>Manage messaging access for each connected channel.</p>
+            <div id="inbox-channel-status" class="inbox-channel-status"></div>
+            <div class="inbox-webhook-row">
+              <span>Realtime webhook</span>
+              <code id="inbox-webhook-url">Checking…</code>
+            </div>
           </div>
-          <div id="inbox-channel-status" class="inbox-channel-status"></div>
-          <div class="inbox-webhook-row">
-            <span>Realtime webhook</span>
-            <code id="inbox-webhook-url">Checking…</code>
-          </div>
-          <div id="inbox-sync-message" class="connector-message"></div>
-        </article>
+        </details>
+        <div id="inbox-sync-message" class="connector-message" role="status" aria-live="polite"></div>
 
         <div class="inbox-layout">
           <aside class="inbox-sidebar card">
@@ -421,11 +422,6 @@
 
               <form id="conversation-reply-form" class="conversation-composer">
                 <div class="composer-input-row">
-                  <textarea id="conversation-reply-body" rows="2" placeholder="Message…" aria-label="Message"></textarea>
-                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit">Send</button>
-                </div>
-                <div id="composer-attachment" class="composer-attachment" hidden></div>
-                <div class="composer-actions">
                   <div class="composer-tools">
                     <button id="composer-emoji-button" class="composer-tool" type="button" aria-label="Choose emoji" title="Emoji">☺</button>
                     <button id="composer-file-button" class="composer-tool" type="button" aria-label="Attach a file" title="Photo, video, audio or file">＋</button>
@@ -433,6 +429,11 @@
                     <button id="composer-record-button" class="composer-tool" type="button" aria-label="Record a voice message" title="Record voice message">🎙</button>
                     <div id="composer-emoji-picker" class="composer-emoji-picker" hidden></div>
                   </div>
+                  <textarea id="conversation-reply-body" rows="1" placeholder="Message…" aria-label="Message"></textarea>
+                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit">Send</button>
+                </div>
+                <div id="composer-attachment" class="composer-attachment" hidden></div>
+                <div class="composer-actions">
                   <span id="conversation-mode-note">Sent through your connected channel</span>
                 </div>
                 <div id="composer-error" class="composer-error" role="status" aria-live="polite"></div>

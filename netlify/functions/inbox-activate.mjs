@@ -20,7 +20,7 @@ async function subscribeInstagram(account){
     'https://graph.instagram.com/'+versionInstagram()+'/'+encodeURIComponent(account.platform_account_id)+'/subscribed_apps'
   );
   endpoint.search=new URLSearchParams({
-    subscribed_fields:'messages,messaging_postbacks,comments',
+    subscribed_fields:'messages,messaging_postbacks,messaging_seen,comments',
     access_token:account.access_token
   });
   const response=await fetch(endpoint,{method:'POST'});
@@ -43,7 +43,7 @@ async function subscribeFacebook(account){
     'https://graph.facebook.com/'+versionFacebook()+'/'+encodeURIComponent(account.platform_account_id)+'/subscribed_apps'
   );
   endpoint.search=new URLSearchParams({
-    subscribed_fields:'messages,messaging_postbacks',
+    subscribed_fields:'messages,messaging_postbacks,message_reads',
     access_token:account.access_token
   });
   const response=await fetch(endpoint,{method:'POST'});
@@ -99,6 +99,7 @@ export default async request=>{
             messaging_permission:p.messaging,
             insights_permission:p.insights,
             webhook_status:account.webhook_status||'not_configured',
+            read_receipts_subscribed:account.capabilities_json?.read_receipts_subscribed===true,
             token_expires_at:account.token_expires_at||null,
             last_inbox_sync_at:account.last_inbox_sync_at||null,
             inbox_state:!['instagram_reels','facebook_page','facebook'].includes(account.platform)
@@ -157,7 +158,8 @@ export default async request=>{
       ...(account.capabilities_json||{}),
       messages_read:true,
       messages_send:true,
-      webhooks:true
+      webhooks:true,
+      read_receipts_subscribed:true
     };
     await supabaseRequest(
       scopedPath('content_accounts?id=eq.'+encodeURIComponent(account.id),workspaceId),

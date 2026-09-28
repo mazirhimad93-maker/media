@@ -4,7 +4,7 @@ const failPage = (message) => htmlResponse(successPage({ title:'Instagram connec
 async function subscribeAccount(accountId, accessToken) {
   const version = process.env.INSTAGRAM_API_VERSION?.trim() || 'v26.0';
   const endpoint = new URL(`https://graph.instagram.com/${version}/${accountId}/subscribed_apps`);
-  endpoint.search = new URLSearchParams({ subscribed_fields:'messages,messaging_postbacks,comments', access_token:accessToken });
+  endpoint.search = new URLSearchParams({ subscribed_fields:'messages,messaging_postbacks,messaging_seen,comments', access_token:accessToken });
   const response = await fetch(endpoint, { method:'POST' });
   const data = await response.json().catch(() => ({}));
   return { ok: response.ok && data?.success !== false, data };
@@ -50,7 +50,7 @@ export default async (request) => {
       status:existing?.status || 'active', is_active:existing?.is_active ?? true, health_status:'healthy', access_token:longToken.access_token, refresh_token:null, token_type:'Bearer', token_expires_at:expiresAt,
       scope, daily_limit:state.dailyLimit, weekly_limit:state.weeklyLimit, min_gap_minutes:state.minGapMinutes, error_message:null,
       webhook_status:subscription.ok ? 'subscribed' : 'needs_attention',
-      capabilities_json:{publish:true,messages_read:true,messages_send:true,analytics:true,webhooks:subscription.ok},
+      capabilities_json:{publish:true,messages_read:true,messages_send:true,analytics:true,webhooks:subscription.ok,read_receipts_subscribed:subscription.ok},
       settings_json:{share_to_feed:true},
       metadata:{oauth_provider:'instagram',connected_at:new Date().toISOString(),instagram_scoped_id:profile.id || null,webhook_subscription:subscription.data}
     }, assignmentFromState(state));

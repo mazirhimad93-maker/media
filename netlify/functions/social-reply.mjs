@@ -1,4 +1,4 @@
-import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { connectorOrigin, jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 import { dispatchSocialOutboxItem } from './_social-delivery.mjs';
 
 export default async (request) => {
@@ -34,7 +34,7 @@ export default async (request) => {
       if(!allowed[type]?.includes(extension)||!path.startsWith(prefix)){
         throw Object.assign(new Error('Invalid attachment. Choose the file again.'),{status:400});
       }
-      media={type,url:`${process.env.SUPABASE_URL?.replace(/\/$/,'')}/storage/v1/object/public/social-message-media/${path}`,name:String(attachment.name||type).slice(0,120)};
+      media={type,url:`${connectorOrigin(request)}/api/social/media/file?path=${encodeURIComponent(path)}`,name:String(attachment.name||type).slice(0,120)};
     }
 
     const created=await supabaseRequest('social_outbox',{

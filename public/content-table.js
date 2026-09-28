@@ -132,6 +132,17 @@ function render(){
   ].map(x=>`<div class="stat-card whop-stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${fmt(x[1])}</strong><span>${esc(x[0])}</span></div></div>`).join('');
   const cols=visible(); $('content-table-meta').textContent=`${rows.length} rows · ${cols.length} visible columns · drag headers to reorder`;
   $('content-table').innerHTML=rows.length?rows.map(r=>'<tr>'+cols.map(x=>`<td data-column="${x.key}" style="width:${x.width}px;min-width:${x.width}px;max-width:${x.width}px">${cell(r,x.key)}</td>`).join('')+'</tr>').join(''):`<tr><td class="empty-row" colspan="${Math.max(1,cols.length)}">No content matches the current filters.</td></tr>`;
+  $('content-mobile-list').innerHTML=rows.length?rows.map(r=>`
+    <article class="content-mobile-card">
+      <div class="content-mobile-card-top"><span class="platform-chip">${esc(platformLabel(r.platform))}</span><span class="status-chip ${statusClass(r.status)}">${esc(r.status||'—')}</span></div>
+      <h3>${esc(r.title||'Content')}</h3>
+      <p>${esc(r.campaign_name||'No campaign')} · ${esc(r.account_username||'No account')}</p>
+      <div class="content-mobile-metrics"><span><strong>${r.views==null?'—':fmt(r.views)}</strong> views</span><span><strong>${fmt(r.primary_result||0)}</strong> ${esc(r.primary_result_label||'results')}</span><span>${esc(dateShort(r.finished_at||r.created_at)||'')}</span></div>
+      <div class="content-mobile-actions">
+        <button class="open-btn content-preview" data-queue="${esc(r.queue_id)}" type="button">View details</button>
+        ${r.external_post_url?`<a class="post-url" href="${esc(r.external_post_url)}" target="_blank" rel="noopener">Open post ↗</a>`:''}
+      </div>
+    </article>`).join(''):'<div class="empty-list">No content matches the current filters.</div>';
   document.querySelectorAll('.content-preview').forEach(button=>{
     button.onclick=()=>{
       const row=(state.content?.rows||[]).find(x=>String(x.queue_id)===String(button.dataset.queue));
