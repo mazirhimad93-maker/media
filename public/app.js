@@ -1081,16 +1081,27 @@ async function startConnector(provider){
 }
 
 function renderAccounts(){
-  const data=state.data||{accounts:[]};
+  const data=state.data||{accounts:[],usage_summary:{}};
   const config=state.config||{providers:{}};
   const accounts=data.accounts||[];
+  const usage=data.usage_summary||{};
 
   populateConnectorOptions();
 
   $('account-count').textContent=`${accounts.length} channels`;
+
+  if($('channel-summary')){
+    $('channel-summary').innerHTML=[
+      stat('Used Today',usage.used_today||0,'orange','▶'),
+      stat('Lifetime Posts',usage.total_published||0,'green','✓'),
+      stat('Queued Now',usage.queued_now||0,'purple','↻'),
+      stat('Channels',accounts.length,'cyan','◎')
+    ].join('');
+  }
+
   $('ig-provider-status').textContent=config.providers?.instagram?.ready
     ? 'Connector configured'
-    : 'Publishing connected · add messaging OAuth';
+    : 'Add Instagram app keys in Netlify';
 
   $('fb-provider-status').textContent=config.providers?.facebook?.ready
     ? 'Messenger connector configured'
@@ -1098,7 +1109,7 @@ function renderAccounts(){
 
   $('yt-provider-status').textContent=config.providers?.youtube?.ready
     ? 'Connector configured'
-    : 'Existing channel tokens in DB';
+    : 'Add Google OAuth keys in Netlify';
 
   if($('connect-instagram')){
     $('connect-instagram').disabled=!config.providers?.instagram?.ready;
@@ -1122,22 +1133,165 @@ function renderAccounts(){
   }
 
   $('accounts-table').innerHTML=accounts.length
-    ? accounts.map(a=>{
-      const c=a.capabilities_json||{};
+    ? accounts.map(account=>{
+      const caps=account.capabilities_json||{};
+      const daily=Number(account.daily_limit||0);
+      const used=Number(account.used_today||0);
+      const remaining=account.daily_remaining==null?'∞':fmt(account.daily_remaining);
+      const percent=Number(account.daily_usage_percent||0);
 
       return `
         <tr>
-          <td><strong>${esc(a.username||a.display_name||'Unnamed')}</strong></td>
-          <td><span class="platform-chip">${esc(platformLabel(a.platform))}</span></td>
-          <td><span class="status-chip ${a.is_active!==false?'active':'inactive'}">${a.is_active!==false?'Active':'Paused'}</span></td>
-          <td>${c.publish?'Enabled':'—'}</td>
-          <td>${c.messages_read||c.messages_send?'Enabled':'Not connected'}</td>
-          <td>${esc(a.webhook_status||'not configured')}</td>
-          <td>${fmt(a.daily_limit||0)}</td>
+          <td><strong>${esc(account.username||account.display_name||'Unnamed')}</strong></td>
+          <td><span class="platform-chip">${esc(platformLabel(account.platform))}</span></td>
+          <td><span class="status-chip ${account.is_active!==false?'active':'inactive'}">${account.is_active!==false?'Active':'Paused'}</span></td>
+          <td>
+            <div class="usage-cell">
+              <strong>${fmt(used)}${daily?` / ${fmt(daily)}`:''}</strong>
+              <div class="usage-track"><span style="width:${Math.min(100,percent)}%"></span></div>
+            </div>
+          </td>
+          <td>
+            <div class="channel-limit-editor">
+              <input class="channel-daily-limit" data-id="${esc(account.id)}" type="number" min="0" max="10000" value="${daily}">
+              <button class="save-channel-limit" data-id="${esc(account.id)}" type="button">Save</button>
+            </div>
+          </td>
+          <td>${remaining}</td>
+          <td>${fmt(account.total_published||0)}</td>
+          <td>${fmt(account.queued_now||0)}</td>
+          <td>${caps.messages_read||caps.messages_send?'Enabled':'—'}</td>
+          <td>${esc(account.webhook_status||'not configured')}</td>
         </tr>
       `;
     }).join('')
-    : '<tr><td class="empty-row" colspan="7">No connected channels found.</td></tr>';
+    : '<tr><td class="empty-row" colspan="10">No channels yet. Click Add Channels to connect your first account.</td></tr>';
+
+  document.querySelectorAll('.save-channel-limit').forEach(button=>{
+    button.onclick=()=>saveChannelLimit(button.dataset.id);
+  });
+}
+
+async function refreshChannelData(){
+  const offset=new Date().getTimezoneOffset();
+  state.data=await api(`/api/data?tzOffsetMinutes=${encodeURIComponent(offset)}`);
+  renderAccounts();
+}
+
+async function saveChannelLimit(accountId){
+  const input=[...document.querySelectorAll('.channel-daily-limit')].find(el=>el.dataset.id===accountId);
+  if(!input) return;
+
+  try{
+    await api('/api/channels/settings',{
+      method:'POST',
+      body:{accountId,dailyLimit:Number(input.value||0)}
+    });
+    await refreshChannelData();
+  }catch(error){
+    alert(error.message);
+  }
+}
+
+async function applyDailyLimitToAll(){
+  const value=Number($('bulk-daily-limit')?.value||0);
+  const button=$('apply-all-daily-limit');
+  button.disabled=true;
+  button.textContent='Applying…';
+
+  try{
+    await api('/api/channels/settings',{
+      method:'POST',
+      body:{applyAll:true,dailyLimit:value}
+    });
+    await refreshChannelData();
+  }catch(error){
+    alert(error.message);
+  }finally{
+    button.disabled=false;
+    button.textContent='Apply daily limit to all';
+  }
+}
+
+function renderSettings(){
+  const profile=state.auth?.profile||{};
+  const user=state.auth?.user||{};
+  const workspace=state.auth?.workspace||state.settings?.workspace||{};
+
+  if($('settings-full-name')) $('settings-full-name').value=profile.full_name||'';
+  if($('settings-email')) $('settings-email').value=user.email||profile.email||'';
+  if($('settings-role')) $('settings-role').value=profile.role||state.settings?.membership?.role||'member';
+  if($('settings-workspace-name')) $('settings-workspace-name').value=workspace.name||'';
+  if($('settings-workspace-id')) $('settings-workspace-id').value=workspace.id||'Workspace migration pending';
+}
+
+async function loadSettings(){
+  try{
+    const result=await api('/api/settings');
+    state.settings=result;
+    if(result.profile) state.auth.profile={...state.auth.profile,...result.profile};
+    if(result.workspace) state.auth.workspace=result.workspace;
+    renderSettings();
+  }catch(error){
+    if($('profile-settings-message')){
+      $('profile-settings-message').textContent=error.message;
+      $('profile-settings-message').className='connector-message error';
+    }
+  }
+}
+
+async function saveProfileSettings(event){
+  event.preventDefault();
+  const message=$('profile-settings-message');
+  try{
+    const result=await api('/api/settings',{method:'POST',body:{fullName:$('settings-full-name').value}});
+    if(result.profile) state.auth.profile={...state.auth.profile,...result.profile};
+    message.textContent='Profile saved.';
+    message.className='connector-message success';
+    renderSettings();
+  }catch(error){
+    message.textContent=error.message;
+    message.className='connector-message error';
+  }
+}
+
+async function saveWorkspaceSettings(event){
+  event.preventDefault();
+  const message=$('workspace-settings-message');
+  try{
+    const result=await api('/api/settings',{method:'POST',body:{workspaceName:$('settings-workspace-name').value}});
+    if(result.workspace) state.auth.workspace=result.workspace;
+    message.textContent='Workspace saved.';
+    message.className='connector-message success';
+    renderSettings();
+  }catch(error){
+    message.textContent=error.message;
+    message.className='connector-message error';
+  }
+}
+
+async function savePasswordSettings(event){
+  event.preventDefault();
+  const password=$('settings-password').value;
+  const confirm=$('settings-password-confirm').value;
+  const message=$('password-settings-message');
+
+  if(password!==confirm){
+    message.textContent='Passwords do not match.';
+    message.className='connector-message error';
+    return;
+  }
+
+  try{
+    await api('/api/settings',{method:'POST',body:{newPassword:password}});
+    $('settings-password').value='';
+    $('settings-password-confirm').value='';
+    message.textContent='Password changed.';
+    message.className='connector-message success';
+  }catch(error){
+    message.textContent=error.message;
+    message.className='connector-message error';
+  }
 }
 
 function renderLeadCounts(){
