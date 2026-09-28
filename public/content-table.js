@@ -111,10 +111,21 @@ function badge(){
 
 function render(){
   if(!$('content-table')||!state.content) return;
-  const rows=filteredRows(),pub=rows.filter(x=>x.status==='done'||x.external_post_id||x.external_post_url),views=pub.reduce((n,x)=>n+Number(x.views||0),0),eng=pub.reduce((n,x)=>n+Number(x.engagements||0),0),comments=pub.reduce((n,x)=>n+Number(x.comments||0),0);
+  const rows=filteredRows();
+  const pub=rows.filter(x=>x.status==='done'||x.external_post_id||x.external_post_url);
+  const views=pub.reduce((n,x)=>n+Number(x.views||0),0);
+  const eng=pub.reduce((n,x)=>n+Number(x.engagements||0),0);
+  const clicks=pub.reduce((n,x)=>n+Number(x.link_clicks||0),0);
+  const dms=pub.reduce((n,x)=>n+Number(x.inbound_dms||0),0);
+  const primary=pub.reduce((n,x)=>n+Number(x.primary_result||0),0);
   badge();renderManager();renderHead();
   $('content-summary').innerHTML=[
-    ['Published',pub.length,'green','▶'],['Views',views,'orange','↗'],['Engagements',eng,'purple','◆'],['Comments',comments,'cyan','✉'],['Eng. Rate',views?(eng/views*100).toFixed(2)+'%':'0.00%','blue','%']
+    ['Published',pub.length,'green','▶'],
+    ['Views',views,'orange','↗'],
+    ['Primary Results',primary,'purple','◆'],
+    ['Link Clicks',clicks,'blue','↗'],
+    ['DMs',dms,'cyan','✉'],
+    ['Eng. Rate',views?(eng/views*100).toFixed(2)+'%':'0.00%','orange','%']
   ].map(x=>`<div class="stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${typeof x[1]==='string'?esc(x[1]):fmt(x[1])}</strong><span>${x[0]}</span></div></div>`).join('');
   const cols=visible(); $('content-table-meta').textContent=`${rows.length} rows · ${cols.length} visible columns · drag headers to reorder`;
   $('content-table').innerHTML=rows.length?rows.map(r=>'<tr>'+cols.map(x=>`<td data-column="${x.key}" style="width:${x.width}px;min-width:${x.width}px;max-width:${x.width}px">${cell(r,x.key)}</td>`).join('')+'</tr>').join(''):`<tr><td class="empty-row" colspan="${Math.max(1,cols.length)}">No content matches the current filters.</td></tr>`;
