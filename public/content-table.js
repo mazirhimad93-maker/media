@@ -4,16 +4,17 @@ const {state,esc,fmt,platformLabel,dateShort}=media;
 const $=id=>document.getElementById(id);
 
 const defaults=[
-  ['content','Content',340,true],['platform','Platform',105,true],['account','Account',165,true],
-  ['status','Status',105,true],['views','Views',95,true],['engagements','Engagements',115,true],
-  ['engagement_rate','Eng. rate',105,true],['likes','Likes',85,false],['comments','Comments',100,true],
-  ['shares','Shares',85,false],['saves','Saves',85,false],['published_at','Published',125,false],
-  ['metrics_updated','Metrics updated',140,false],['clip','Clip',90,true],['result_url','Published URL',135,true],
-  ['error','Error',170,false]
+  ['content','Content',330,true],['platform','Platform',100,true],['account','Account',155,true],
+  ['views','Views',90,true],['primary_result','Result',115,true],['link_clicks','Link Clicks',105,true],
+  ['inbound_dms','DMs',90,true],['dm_threads','DM Threads',100,false],['engagement_rate','Eng. Rate',105,true],
+  ['engagements','Engagements',110,false],['comments','Comments',95,true],['likes','Likes',85,false],
+  ['shares','Shares',85,false],['saves','Saves',85,false],['status','Status',100,true],
+  ['published_at','Published',120,false],['metrics_updated','Metrics Updated',135,false],
+  ['clip','Clip',90,true],['result_url','Published URL',130,true],['error','Error',170,false]
 ].map(([key,label,width,visible])=>({key,label,width,visible}));
 
 const ui={columns:null,sortKey:'finished_at',sortDir:'desc',drag:null};
-const prefKey=()=>`alchemic-content-columns:${state.auth?.workspace?.id||'default'}`;
+const prefKey=()=>`alchemic-content-columns-v2:${state.auth?.workspace?.id||'default'}`;
 
 function columns(){
   if(ui.columns) return ui.columns;
