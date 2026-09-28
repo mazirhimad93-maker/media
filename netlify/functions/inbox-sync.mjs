@@ -37,12 +37,18 @@ async function getJson(url){
 }
 
 async function instagramConversations(account){
-  const url=new URL('https://graph.instagram.com/'+igVersion()+'/'+encodeURIComponent(account.platform_account_id)+'/conversations');
-  url.search=new URLSearchParams({limit:'50',access_token:account.access_token});
-  const listing=await getJson(url);
-  const out=[];
+  let next=new URL('https://graph.instagram.com/'+igVersion()+'/'+encodeURIComponent(account.platform_account_id)+'/conversations');
+  next.search=new URLSearchParams({limit:'100',platform:'instagram',access_token:account.access_token});
+  const conversations=[];
 
-  for(const conversation of listing.data||[]){
+  for(let page=0;next&&page<10;page++){
+    const listing=await getJson(next);
+    conversations.push(...(listing.data||[]));
+    next=listing.paging?.next ? new URL(listing.paging.next) : null;
+  }
+
+  const out=[];
+  for(const conversation of conversations){
     const detail=new URL('https://graph.instagram.com/'+igVersion()+'/'+encodeURIComponent(conversation.id));
     detail.search=new URLSearchParams({
       fields:'messages{id,created_time,from,to,message}',
@@ -59,18 +65,24 @@ async function instagramConversations(account){
 }
 
 async function facebookConversations(account){
-  const url=new URL('https://graph.facebook.com/'+fbVersion()+'/'+encodeURIComponent(account.platform_account_id)+'/conversations');
-  url.search=new URLSearchParams({
-    limit:'50',
+  let next=new URL('https://graph.facebook.com/'+fbVersion()+'/'+encodeURIComponent(account.platform_account_id)+'/conversations');
+  next.search=new URLSearchParams({
+    limit:'100',
     fields:'id,updated_time,messages.limit(20){id,message,from,to,created_time}',
     access_token:account.access_token
   });
-  const listing=await getJson(url);
-  return (listing.data||[]).map(x=>({
-    id:String(x.id),
-    updated_time:x.updated_time||null,
-    messages:x.messages?.data||[]
-  }));
+
+  const out=[];
+  for(let page=0;next&&page<10;page++){
+    const listing=await getJson(next);
+    out.push(...(listing.data||[]).map(x=>({
+      id:String(x.id),
+      updated_time:x.updated_time||null,
+      messages:x.messages?.data||[]
+    })));
+    next=listing.paging?.next ? new URL(listing.paging.next) : null;
+  }
+  return out;
 }
 
 async function upsertContact(account,party,workspaceId){
