@@ -55,6 +55,20 @@ export default async (request) => {
       const campaign=pool?campaignByPool.get(pool.id):null;
       const u=usage.get(account.id)||{today:0,total:0,queued:0,failed:0};
       const daily=Number(account.daily_limit||0);
+      const scope=String(account.scope||'');
+      const caps=account.capabilities_json||{};
+      const metaInbox=['instagram_reels','facebook_page','facebook'].includes(account.platform);
+      const messagingPermission=account.platform==='instagram_reels'
+        ? (scope.includes('instagram_business_manage_messages')||caps.messages_read===true||caps.messages_send===true)
+        : ['facebook_page','facebook'].includes(account.platform)
+          ? (scope.includes('pages_messaging')||caps.messages_read===true||caps.messages_send===true)
+          : false;
+      const insightsPermission=account.platform==='instagram_reels'
+        ? (scope.includes('instagram_business_manage_insights')||caps.analytics===true)
+        : account.platform==='youtube_shorts'
+          ? scope.includes('yt-analytics.readonly')
+          : true;
+
       return {
         id:account.id,
         platform:account.platform,
@@ -74,8 +88,17 @@ export default async (request) => {
         daily_usage_percent:daily>0?Math.min(100,Math.round((u.today/daily)*100)):0,
         last_used_at:account.last_used_at,
         token_expires_at:account.token_expires_at,
-        capabilities_json:account.capabilities_json||{},
+        capabilities_json:caps,
         webhook_status:account.webhook_status||'not_configured',
+        messaging_permission:messagingPermission,
+        insights_permission:insightsPermission,
+        inbox_state:!metaInbox
+          ? 'not_applicable'
+          : !messagingPermission
+            ? 'reconnect_required'
+            : account.webhook_status==='subscribed'
+              ? 'ready'
+              : 'activate',
         membership:{pool_id:pool?.id||null,pool_name:pool?.name||null,campaign_id:campaign?.id||null,campaign_name:campaign?.name||null}
       };
     });
