@@ -1,9 +1,10 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
 const safe=async path=>supabaseRequest(path).catch(()=>[]);
 
-export default async () => {
+export default async (request) => {
   try{
+    await requireUser(request);
     const [campaigns,pools,memberships,accounts,variants,assets,queue,history,metrics]=await Promise.all([
       safe('content_campaigns?select=*&limit=500'),
       safe('content_distribution_pools?select=*&limit=200'),
