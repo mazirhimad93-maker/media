@@ -53,6 +53,7 @@
         <button class="nav-item" data-view="inbox"><span class="nav-icon">✉</span><span>Inbox</span><span id="unread-pill" class="nav-badge">0</span></button>
         <button class="nav-item" data-view="leads"><span class="nav-icon">◉</span><span>Leads</span></button>
         <button class="nav-item" data-view="accounts"><span class="nav-icon">◎</span><span>Channels</span></button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -311,11 +312,14 @@
 
       <section class="view" id="view-accounts">
         <div class="section-top">
-          <div><h2>Connected Channels</h2><p>Add new social channels and manage the same accounts used by your Distributor.</p></div>
-          <span id="account-count" class="small-badge"></span>
+          <div><h2>Connected Channels</h2><p>Manage publishing capacity, messaging access and the accounts used by your Distributor.</p></div>
+          <div class="channel-page-actions">
+            <span id="account-count" class="small-badge"></span>
+            <button id="toggle-add-channel" class="primary-inline-btn" type="button">+ Add Channels</button>
+          </div>
         </div>
 
-        <article class="card connector-card">
+        <article id="add-channel-panel" class="card connector-card" hidden>
           <div class="card-head">
             <div>
               <h2>Add Channel</h2>
@@ -375,6 +379,8 @@
           <div id="connector-message" class="connector-message"></div>
         </article>
 
+        <div class="stats-grid compact channel-summary" id="channel-summary"></div>
+
         <div class="provider-grid">
           <article class="provider-card"><div class="provider-logo instagram">IG</div><div><strong>Instagram</strong><span id="ig-provider-status">Publishing connected</span></div></article>
           <article class="provider-card"><div class="provider-logo facebook">FB</div><div><strong>Facebook Pages</strong><span id="fb-provider-status">Messenger connector</span></div></article>
@@ -384,9 +390,71 @@
         <article class="card">
           <div class="card-head"><div><h2>All Channels</h2><p>Existing Distributor accounts and capabilities.</p></div></div>
           <div class="table-wrap">
-            <table><thead><tr><th>Account</th><th>Platform</th><th>Status</th><th>Publishing</th><th>Inbox</th><th>Webhook</th><th>Daily Limit</th></tr></thead><tbody id="accounts-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Platform</th>
+                  <th>Status</th>
+                  <th>Today</th>
+                  <th>Daily Limit</th>
+                  <th>Remaining</th>
+                  <th>Lifetime</th>
+                  <th>Queued</th>
+                  <th>Inbox</th>
+                  <th>Webhook</th>
+                </tr>
+              </thead>
+              <tbody id="accounts-table"></tbody>
+            </table>
           </div>
         </article>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="section-top">
+          <div><h2>Settings</h2><p>Manage your account and Media workspace.</p></div>
+        </div>
+
+        <div class="settings-grid">
+          <article class="card settings-card">
+            <div class="card-head"><div><h2>Profile</h2><p>Your account details inside Alchemic Media.</p></div></div>
+            <form id="profile-settings-form" class="settings-form">
+              <label><span>Name</span><input id="settings-full-name" autocomplete="name"></label>
+              <label><span>Email</span><input id="settings-email" type="email" disabled></label>
+              <label><span>Role</span><input id="settings-role" disabled></label>
+              <button class="primary-inline-btn" type="submit">Save profile</button>
+            </form>
+            <div id="profile-settings-message" class="connector-message"></div>
+          </article>
+
+          <article class="card settings-card">
+            <div class="card-head"><div><h2>Workspace</h2><p>Existing Alchemic data is owned by this workspace. New accounts start with an empty workspace.</p></div></div>
+            <form id="workspace-settings-form" class="settings-form">
+              <label><span>Workspace name</span><input id="settings-workspace-name"></label>
+              <label><span>Workspace ID</span><input id="settings-workspace-id" disabled></label>
+              <button class="primary-inline-btn" type="submit">Save workspace</button>
+            </form>
+            <div id="workspace-settings-message" class="connector-message"></div>
+          </article>
+
+          <article class="card settings-card">
+            <div class="card-head"><div><h2>Password</h2><p>Change the password used to sign in.</p></div></div>
+            <form id="password-settings-form" class="settings-form">
+              <label><span>New password</span><input id="settings-password" type="password" minlength="8" autocomplete="new-password" required></label>
+              <label><span>Confirm password</span><input id="settings-password-confirm" type="password" minlength="8" autocomplete="new-password" required></label>
+              <button class="primary-inline-btn" type="submit">Change password</button>
+            </form>
+            <div id="password-settings-message" class="connector-message"></div>
+          </article>
+
+          <article class="card settings-card">
+            <div class="card-head"><div><h2>Security</h2><p>Session and account security.</p></div></div>
+            <div class="security-row"><span>Authenticated session</span><strong class="ok">Active</strong></div>
+            <div class="security-row"><span>Two-factor authentication</span><strong class="pending">Not configured yet</strong></div>
+            <p class="settings-note">2FA will be enabled as a full TOTP login challenge, not just a cosmetic toggle.</p>
+          </article>
+        </div>
       </section>
     </main>
   </div>
@@ -405,7 +473,7 @@
         <label class="span-2"><span>Source title</span><input id="new-source-title" placeholder="Episode / video title"></label>
 
         <label><span>Preset</span><select id="new-preset" required></select></label>
-        <label><span>Clips</span><select id="new-clip-count"><option value="1">1 clip</option><option value="2">2 clips</option><option value="3" selected>3 clips</option></select></label>
+        <label><span>Clips requested</span><input id="new-clip-count" type="number" min="1" max="1000" step="1" value="3" required><small class="field-help">1–1000. The Clipper processes large requests in batches.</small></label>
 
         <label><span>Mode</span>
           <select id="new-operation-mode">
