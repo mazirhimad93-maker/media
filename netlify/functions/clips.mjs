@@ -1,16 +1,16 @@
-import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 
 const safe = async (path) => supabaseRequest(path).catch(() => []);
 
 export default async (request) => {
   try {
-    await requireUser(request);
+    const {workspaceId}=await requireWorkspace(request);
     const [variants,assets,queue,campaigns,accounts] = await Promise.all([
-      safe('clip_variants?select=*&order=created_at.desc&limit=1000'),
-      safe('content_assets?select=*&order=created_at.desc&limit=1000'),
-      safe('content_publish_queue?select=id,campaign_id,asset_id,platform,status,planned_title,planned_caption,external_post_id,external_post_url,selected_account_id,account_id,scheduled_at,finished_at,created_at&order=created_at.desc&limit=5000'),
-      safe('content_campaigns?select=id,name,status&limit=500'),
-      safe('content_accounts?select=id,platform,username,display_name,platform_account_id&limit=1000')
+      safe(scopedPath('clip_variants?select=*&order=created_at.desc&limit=1000',workspaceId)),
+      safe(scopedPath('content_assets?select=*&order=created_at.desc&limit=1000',workspaceId)),
+      safe(scopedPath('content_publish_queue?select=id,campaign_id,asset_id,platform,status,planned_title,planned_caption,external_post_id,external_post_url,selected_account_id,account_id,scheduled_at,finished_at,created_at&order=created_at.desc&limit=5000',workspaceId)),
+      safe(scopedPath('content_campaigns?select=id,name,status&limit=500',workspaceId)),
+      safe(scopedPath('content_accounts?select=id,platform,username,display_name,platform_account_id&limit=1000',workspaceId))
     ]);
 
     const campaignById=new Map((campaigns||[]).map(x=>[x.id,x]));
