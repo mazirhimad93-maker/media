@@ -37,10 +37,12 @@ function updateUserUi() {
   $('user-role').textContent = profile.role || 'member';
   $('user-email').textContent = email;
   $('user-avatar').textContent = initials;
+  const workspaceName = media.state.auth.workspace?.name || 'Media workspace';
+  document.querySelectorAll('.workspace-card span').forEach(el=>{ el.textContent=workspaceName; });
 }
 
 function showAuth(message) {
-  media.state.auth = { accessToken: null, user: null, profile: null };
+  media.state.auth = { accessToken: null, user: null, profile: null, workspace: null };
   $('app-shell').hidden = true;
   $('auth-shell').hidden = false;
   $('auth-message').textContent = message || '';
@@ -70,6 +72,7 @@ async function restoreSession() {
     media.state.auth.accessToken = payload.access_token;
     media.state.auth.user = payload.user || null;
     media.state.auth.profile = payload.profile || null;
+    media.state.auth.workspace = payload.workspace || null;
     return true;
   } catch {
     return false;
@@ -101,6 +104,7 @@ async function login(event) {
     media.state.auth.accessToken = result.access_token;
     media.state.auth.user = result.user;
     media.state.auth.profile = result.profile;
+    media.state.auth.workspace = result.workspace || null;
     $('login-password').value = '';
     await showApp();
   } catch (error) {
@@ -142,6 +146,7 @@ async function register(event) {
     media.state.auth.accessToken = result.access_token;
     media.state.auth.user = result.user;
     media.state.auth.profile = result.profile;
+    media.state.auth.workspace = result.workspace || null;
     await showApp();
   } catch (error) {
     const message = String(error.message || '');
