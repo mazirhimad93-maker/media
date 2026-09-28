@@ -1,7 +1,8 @@
-import { jsonResponse, publicError, supabaseRequest } from './_shared.mjs';
+import { jsonResponse, publicError, requireUser, supabaseRequest } from './_shared.mjs';
 
-export default async () => {
+export default async (request) => {
   try {
+    await requireUser(request);
     const accountsPromise = supabaseRequest(
       'content_accounts?select=id,platform,platform_account_id,username,display_name,status,is_active,health_status,daily_limit,weekly_limit,min_gap_minutes,last_used_at,token_expires_at,scope,capabilities_json,webhook_status,last_inbox_sync_at&order=created_at.desc'
     ).catch(async () => {
