@@ -14,6 +14,13 @@ const median=values=>{
   return a.length%2?a[m]:(a[m-1]+a[m])/2;
 };
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const publicMediaUrl=value=>{
+  const s=String(value||'').trim();
+  if(!s) return null;
+  const match=s.match(/^https?:\/\/(?:54\.172\.230\.194|172\.31\.45\.144|127\.0\.0\.1):8091\/outputs\/([^?#]+)(?:[?#].*)?$/i);
+  if(!match) return s;
+  return '/media/'+encodeURIComponent(decodeURIComponent(match[1]));
+};
 
 function sourceBase(source){
   const s=String(source.status||'').toLowerCase();
@@ -110,7 +117,7 @@ function jobFrom(source,variants,renderMedian){
       status:x.status,
       render_job_id:x.render_job_id,
       render_status_url:x.render_status_url,
-      render_url:x.render_url,
+      render_url:publicMediaUrl(x.render_url),
       duration_seconds:x.duration_seconds,
       error_message:x.error_message,
       updated_at:x.updated_at,
