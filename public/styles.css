@@ -1017,3 +1017,23 @@ button{cursor:pointer}
   .composer-attachment{margin-top:5px;padding:6px}
   .composer-error{margin:5px 2px 0}
 }
+
+
+/* Grouped clipping jobs */
+.clip-table-section td{background:#f8fafc;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;padding:11px 12px}
+.clip-table-section strong{display:block;font-size:11px;color:#111827}
+.clip-table-section span{display:block;margin-top:3px;font-size:9px;color:#64748b}
+.clip-job-group-row td{background:#fffdf9;border-bottom:1px solid #fed7aa}
+.clip-job-group-row:hover td{background:#fffaf2}
+.clip-job-title-line{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:360px}
+.clip-job-title-line>div{min-width:0}
+.job-clip-section-label td{background:#fff7ed;color:#9a3412;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding-top:8px;padding-bottom:8px}
+.job-clip-row td{background:#fcfcfd}
+.job-clip-row:hover td{background:#f8fafc}
+.job-clip-indent{padding-left:18px;position:relative}
+.job-clip-indent:before{content:'↳';position:absolute;left:0;top:0;color:#cbd5e1;font-weight:700}
+.clip-job-group-row .clip-actions{justify-content:flex-start}
+@media(max-width:800px){
+  .clip-job-title-line{min-width:240px;display:grid}
+  .clip-job-group-row .job-progress-track{max-width:260px!important}
+}
