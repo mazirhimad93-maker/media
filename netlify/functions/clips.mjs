@@ -14,18 +14,27 @@ const firstUrl=(...values)=>{
   return null;
 };
 
+const publicMediaUrl=value=>{
+  const s=String(value||'').trim();
+  if(!s) return null;
+  const match=s.match(/^https?:\/\/(?:54\.172\.230\.194|172\.31\.45\.144|127\.0\.0\.1):8091\/outputs\/([^?#]+)(?:[?#].*)?$/i);
+  if(!match) return s;
+  return '/media/'+encodeURIComponent(decodeURIComponent(match[1]));
+};
+
 export default async (request) => {
   try {
     const {workspaceId}=await requireWorkspace(request);
-    const [variants,assets,queue,campaigns,accounts] = await Promise.all([
+    const [variants,assets,queue,campaigns,distributionCampaigns,accounts] = await Promise.all([
       safe(scopedPath('clip_variants?select=*&order=created_at.desc&limit=1000',workspaceId)),
       safe(scopedPath('content_assets?select=*&order=created_at.desc&limit=1000',workspaceId)),
       safe(scopedPath('content_publish_queue?select=id,campaign_id,asset_id,platform,status,planned_title,planned_caption,external_post_id,external_post_url,selected_account_id,account_id,scheduled_at,finished_at,created_at&order=created_at.desc&limit=5000',workspaceId)),
       safe(scopedPath('content_campaigns?select=id,name,status&limit=500',workspaceId)),
+      safe(scopedPath('distribution_campaigns?select=id,name,slug,status&limit=500',workspaceId)),
       safe(scopedPath('content_accounts?select=id,platform,username,display_name,platform_account_id&limit=1000',workspaceId))
     ]);
 
-    const campaignById=new Map((campaigns||[]).map(x=>[x.id,x]));
+    const campaignById=new Map([...(campaigns||[]),...(distributionCampaigns||[])].map(x=>[x.id,x]));
     const accountById=new Map((accounts||[]).map(x=>[x.id,x]));
     const assetByVariant=new Map();
     for(const a of assets||[]) if(a.clip_variant_id) assetByVariant.set(a.clip_variant_id,a);
@@ -77,13 +86,14 @@ export default async (request) => {
 
       return {
         id,
+        source_id:v?.source_id||null,
         campaign_id:campaignId,
         campaign_name:campaignById.get(campaignId)?.name||null,
         title:v?.title||v?.headline||asset?.file_name||'Clip',
         hook:v?.hook||asset?.metadata?.hook||null,
         status:v?.status||asset?.status||'unknown',
         publishing_approved:asset ? (asset.media_publish_approved ?? true) : false,
-        render_url:renderUrl,
+        render_url:publicMediaUrl(renderUrl),
         render_status_url:v?.render_status_url||null,
         render_job_id:v?.render_job_id||null,
         thumbnail_url:thumbnailUrl,
@@ -141,7 +151,9 @@ export default async (request) => {
 
     return jsonResponse({
       clips,
-      campaigns:(campaigns||[]).map(c=>({id:c.id,name:c.name,status:c.status})),
+      campaigns:[...(campaigns||[]),...(distributionCampaigns||[])]
+        .filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i)
+        .map(c=>({id:c.id,name:c.name,status:c.status})),
       summary:{
         total:clips.length,
         needs_approval:clips.filter(x=>x.publishing_approved===false).length,
