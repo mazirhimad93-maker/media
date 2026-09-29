@@ -140,7 +140,16 @@ export default async (request) => {
       list.push(v); variantsBySource.set(v.source_id,list);
     }
 
-    const jobs=(sources||[]).map(s=>jobFrom(s,variantsBySource.get(s.id)||[],renderMedian));
+    const campaignById=new Map((campaigns||[]).map(c=>[c.id,c]));
+    const jobs=(sources||[]).map(s=>{
+      const job=jobFrom(s,variantsBySource.get(s.id)||[],renderMedian);
+      const campaign=campaignById.get(s.campaign_id)||null;
+      return {
+        ...job,
+        campaign_name:campaign?.name||null,
+        campaign_slug:campaign?.slug||null
+      };
+    });
     jobs.sort((a,b)=>{
       const aDone=a.stage==='complete'||a.stage==='failed';
       const bDone=b.stage==='complete'||b.stage==='failed';
@@ -148,7 +157,6 @@ export default async (request) => {
       return new Date(b.updated_at||0)-new Date(a.updated_at||0);
     });
 
-    const campaignById=new Map((campaigns||[]).map(c=>[c.id,c]));
     const grouped=new Map();
     for(const job of jobs){
       const list=grouped.get(job.campaign_id)||[];
