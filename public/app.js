@@ -15,6 +15,7 @@ const state={
   auth:{accessToken:null,user:null,profile:null,workspace:null},
   inbox:{social:[],selected:null,conversation:null},
   selectedClips:new Set(),
+  expandedClipJobs:new Set(),
   view:'overview'
 };
 
@@ -344,11 +345,67 @@ function clipProgressJobs(){
     .sort((x,y)=>new Date(y.updated_at||0)-new Date(x.updated_at||0));
 }
 
-function clipJobProgressRow(job){
-  const campaign=campaignGroupForMemberId(job.campaign_id);
+function campaignForJob(job){
+  return campaignGroupForMemberId(job.campaign_id)
+    || (state.campaigns?.campaigns||[]).find(c=>campaignGroupKey(c)===campaignGroupKey(job))
+    || null;
+}
+
+function clipReadyForPublishingApproval(clip){
+  const status=String(clip.status||'').toLowerCase();
+  return clip.publishing_approved===false
+    && Boolean(clip.render_url)
+    && ['approved','ready','done','complete','rendered'].includes(status);
+}
+
+function clipTableRow(clip,{nested=false}={}){
+  const performance=clipPerformance(clip);
+  const canApprove=clipReadyForPublishingApproval(clip);
+  const checked=state.selectedClips.has(clip.id);
+  const hasPreview=Boolean(clip.render_url||clip.render_status_url||clip.source_preview_url);
+  const approvalLabel=clip.publishing_approved===true
+    ? 'Approved for publishing'
+    : canApprove
+      ? 'Ready for approval'
+      : 'Waiting for final render';
+
+  return `
+    <tr class="${nested?'job-clip-row':''}">
+      <td><input class="row-check clip-check" type="checkbox" data-id="${esc(clip.id)}" ${checked?'checked':''} ${canApprove?'':'disabled'}></td>
+      <td>
+        <div class="${nested?'job-clip-indent':''}">
+          <strong>${esc(clip.title||'Clip')}</strong>
+          ${clip.hook?`<div class="hook-text">${esc(clip.hook)}</div>`:''}
+        </div>
+      </td>
+      <td>${esc(clip.campaign_name||'—')}</td>
+      <td>
+        <span class="status-chip ${statusClass(clip.status)}">${esc(clip.status||'unknown')}</span>
+        <div class="hook-text">${esc(approvalLabel)}</div>
+      </td>
+      <td>
+        <div class="metric-stack">
+          <strong>${fmt(performance.views)} views</strong>
+          ${clip.duration_seconds?`<span>${Math.round(Number(clip.duration_seconds))} sec</span>`:''}
+        </div>
+      </td>
+      <td>
+        <div class="clip-actions">
+          ${hasPreview?`<button class="open-btn preview-clip" data-id="${esc(clip.id)}">Preview</button>`:''}
+          <button class="details-btn clip-details" data-id="${esc(clip.id)}">Details</button>
+          ${canApprove?`<button class="action-btn approve-clip" data-id="${esc(clip.id)}">Approve for publishing</button>`:clip.publishing_approved===true?'<span class="ok">Approved</span>':''}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function clipJobProgressBlock(job,visibleClipIds){
+  const campaign=campaignForJob(job);
   const expected=Math.max(Number(job.expected_clips||0),Number(job.variants?.total||0));
   const produced=Number(job.variants?.total||0);
   const ready=Number(job.variants?.approved||0);
+  const failed=Number(job.variants?.failed||0);
   const progress=Math.max(0,Math.min(100,Number(job.progress||0)));
   const stage=job.stage_label||job.stage||'Processing';
   const eta=job.waiting
@@ -359,31 +416,57 @@ function clipJobProgressRow(job){
           ? `≈ ${Math.max(1,Math.round(job.eta_minutes))} min left`
           : 'Working…');
 
-  return `
-    <tr class="clip-progress-source-row">
+  const jobIds=new Set((job.clips||[]).map(x=>String(x.id)));
+  const allClips=(state.clips?.clips||[]).filter(x=>jobIds.has(String(x.id)));
+  const shownClips=allClips.filter(x=>!visibleClipIds||visibleClipIds.has(String(x.id)));
+  const expanded=state.expandedClipJobs.has(job.source_id);
+  const latest=allClips
+    .filter(x=>x.render_url)
+    .sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0))[0]||null;
+
+  const header=`
+    <tr class="clip-job-group-row">
       <td></td>
       <td>
-        <strong>${esc(job.title||'Source video')}</strong>
-        <div class="hook-text">Clip creation in progress · ${produced}${expected?'/'+expected:''} clips created · ${ready} ready</div>
-        <div class="job-progress-track" style="margin-top:8px;max-width:430px">
+        <div class="clip-job-title-line">
+          <div>
+            <strong>${esc(job.title||'Source video')}</strong>
+            <div class="hook-text">${produced}${expected?'/'+expected:''} clips · ${ready} rendered${failed?' · '+failed+' failed':''}</div>
+          </div>
+          <button class="open-btn job-toggle" data-source-id="${esc(job.source_id)}">${expanded?'Hide clips':'View '+produced+' clips'} ${expanded?'▴':'▾'}</button>
+        </div>
+        <div class="job-progress-track" style="margin-top:8px;max-width:520px">
           <div class="job-progress-fill" style="width:${progress}%"></div>
         </div>
         <div class="hook-text" style="margin-top:5px">${Math.round(progress)}% · ${esc(eta)}</div>
       </td>
-      <td>${esc(campaign?.name||'—')}</td>
+      <td>${esc(campaign?.name||job.campaign_name||'—')}</td>
       <td>
         <span class="status-chip ${job.error?'status-failed':job.stage==='rendering'?'status-running':'status-ready'}">${esc(stage)}</span>
         <div class="hook-text">Source: ${esc(job.source_status||'—')}</div>
       </td>
       <td>
-        <strong>${produced}${expected?'/'+expected:''}</strong>
-        <div class="hook-text">clips generated</div>
+        <strong>${ready}/${produced||expected||0}</strong>
+        <div class="hook-text">renders ready</div>
       </td>
       <td>
-        <span class="hook-text">${job.waiting?'Selection required':job.error?'Check job error':'Auto-updates on refresh'}</span>
+        <div class="clip-actions">
+          ${latest?`<button class="action-btn preview-clip" data-id="${esc(latest.id)}">Preview latest</button>`:''}
+          <button class="open-btn job-toggle" data-source-id="${esc(job.source_id)}">${expanded?'Collapse':'Open clips'}</button>
+        </div>
       </td>
     </tr>
   `;
+
+  if(!expanded) return header;
+
+  const children=shownClips.length
+    ? shownClips.map(clip=>clipTableRow(clip,{nested:true})).join('')
+    : `<tr class="job-clip-row"><td></td><td colspan="5" class="empty-row">No clips in this job match the current filters.</td></tr>`;
+
+  return header+`
+    <tr class="job-clip-section-label"><td></td><td colspan="5">Clips from this source</td></tr>
+  `+children;
 }
 
 function publishedDropdown(clip){
@@ -431,44 +514,25 @@ function renderClips(){
   ].join('');
 
   const rows=clipFilterRows();
+  const visibleClipIds=new Set(rows.map(x=>String(x.id)));
   const progressJobs=clipProgressJobs();
+  const activeJobClipIds=new Set(progressJobs.flatMap(job=>(job.clips||[]).map(x=>String(x.id))));
+  const libraryRows=rows.filter(clip=>!activeJobClipIds.has(String(clip.id)));
 
-  $('clips-table').innerHTML=(rows.length||progressJobs.length)
-    ? [
-        ...progressJobs.map(clipJobProgressRow),
-        ...rows.map(clip=>{
-      const performance=clipPerformance(clip);
-      const canApprove=clip.publishing_approved===false;
-      const checked=state.selectedClips.has(clip.id);
+  const sections=[];
 
-      return `
-        <tr>
-          <td><input class="row-check clip-check" type="checkbox" data-id="${esc(clip.id)}" ${checked?'checked':''} ${canApprove?'':'disabled'}></td>
-          <td>
-            <strong>${esc(clip.title||'Clip')}</strong>
-            ${clip.hook?`<div class="hook-text">${esc(clip.hook)}</div>`:''}
-          </td>
-          <td>${esc(clip.campaign_name||'—')}</td>
-          <td>
-            <span class="status-chip ${statusClass(clip.status)}">${esc(clip.status||'unknown')}</span>
-            <div class="hook-text">${clip.publishing_approved===true?'Approved':'Needs approval'}</div>
-          </td>
-          <td>
-            <div class="metric-stack">
-              <strong>${fmt(performance.views)} views</strong>
-            </div>
-          </td>
-          <td>
-            <div class="clip-actions">
-              <button class="details-btn clip-details" data-id="${esc(clip.id)}">Details</button>
-              ${clip.render_url?`<button class="open-btn preview-clip" data-id="${esc(clip.id)}">Preview</button>`:''}
-              ${canApprove?`<button class="action-btn approve-clip" data-id="${esc(clip.id)}">Approve</button>`:'<span class="ok">Approved</span>'}
-            </div>
-          </td>
-        </tr>
-      `;
-    })
-      ].join('')
+  if(progressJobs.length){
+    sections.push(`<tr class="clip-table-section"><td colspan="6"><strong>Active clipping jobs</strong><span>Open a source to review each queued, rendering or completed clip.</span></td></tr>`);
+    sections.push(...progressJobs.map(job=>clipJobProgressBlock(job,visibleClipIds)));
+  }
+
+  if(libraryRows.length){
+    sections.push(`<tr class="clip-table-section"><td colspan="6"><strong>Clip library</strong><span>Completed and standalone clips ready for review or publishing.</span></td></tr>`);
+    sections.push(...libraryRows.map(clip=>clipTableRow(clip)));
+  }
+
+  $('clips-table').innerHTML=sections.length
+    ? sections.join('')
     : '<tr><td class="empty-row" colspan="6">No clips or active clipping jobs match the current filters.</td></tr>';
 
   bindClipButtons();
@@ -476,13 +540,22 @@ function renderClips(){
 
   const selectAll=$('select-visible-clips');
   if(selectAll){
-    const eligible=rows.filter(x=>x.publishing_approved===false);
+    const eligible=rows.filter(clipReadyForPublishingApproval);
     selectAll.checked=eligible.length>0 && eligible.every(x=>state.selectedClips.has(x.id));
     selectAll.indeterminate=eligible.some(x=>state.selectedClips.has(x.id)) && !selectAll.checked;
   }
 }
 
 function bindClipButtons(){
+  document.querySelectorAll('.job-toggle').forEach(btn=>{
+    btn.onclick=()=>{
+      const sourceId=btn.dataset.sourceId;
+      if(state.expandedClipJobs.has(sourceId)) state.expandedClipJobs.delete(sourceId);
+      else state.expandedClipJobs.add(sourceId);
+      renderClips();
+    };
+  });
+
   document.querySelectorAll('.approve-clip').forEach(btn=>{
     btn.onclick=()=>approveClip(btn.dataset.id,btn);
   });
