@@ -137,6 +137,18 @@ function allCampaigns(){
   return [...map.values()];
 }
 
+function campaignMemberIds(campaignOrId){
+  const campaign=typeof campaignOrId==='string'
+    ? (state.campaigns?.campaigns||[]).find(c=>c.id===campaignOrId)
+    : campaignOrId;
+  const ids=campaign?.member_campaign_ids;
+  return new Set(Array.isArray(ids)&&ids.length?ids:[campaign?.id||campaignOrId].filter(Boolean));
+}
+
+function campaignGroupForMemberId(memberId){
+  return (state.campaigns?.campaigns||[]).find(c=>campaignMemberIds(c).has(memberId))||null;
+}
+
 function populateCampaignFilters(){
   const campaigns=allCampaigns();
   const options=campaigns
@@ -277,7 +289,7 @@ function clipFilterRows(){
     if(status==='needs' && clip.publishing_approved!==false) return false;
     if(status==='approved' && clip.publishing_approved!==true) return false;
     if(status==='published' && !(clip.published_count>0)) return false;
-    if(campaign!=='all' && clip.campaign_id!==campaign) return false;
+    if(campaign!=='all' && !campaignMemberIds(campaign).has(clip.campaign_id)) return false;
     if(platform!=='all' && !(clip.distributions||[]).some(d=>d.platform===platform)) return false;
     if(cutoff && new Date(clip.created_at||0).getTime()<cutoff) return false;
 
@@ -644,7 +656,18 @@ function populatePresetOptions(){
 }
 
 function campaignLiveProgress(campaignId){
-  return (state.jobs?.campaign_progress||[]).find(x=>x.id===campaignId)||null;
+  const ids=campaignMemberIds(campaignId);
+  const matches=(state.jobs?.campaign_progress||[]).filter(x=>ids.has(x.id));
+  if(!matches.length) return null;
+  const activeJobs=matches.reduce((n,x)=>n+Number(x.active_jobs||0),0);
+  const progress=matches.reduce((n,x)=>n+Number(x.progress||0),0)/matches.length;
+  return {
+    progress,
+    active_jobs:activeJobs,
+    waiting:matches.some(x=>x.waiting),
+    error:matches.some(x=>x.error),
+    eta_minutes:Math.max(0,...matches.map(x=>Number(x.eta_minutes||0)))
+  };
 }
 
 function etaLabel(job){
@@ -672,7 +695,7 @@ function renderJobs(){
   if(!$('clipper-jobs-list')) return;
 
   $('clipper-jobs-list').innerHTML=rows.length?rows.map(job=>{
-    const campaign=(state.campaigns?.campaigns||[]).find(c=>c.id===job.campaign_id);
+    const campaign=campaignGroupForMemberId(job.campaign_id);
     const variants=job.variants||{};
     const stageClass=job.error?'failed':job.stage==='complete'?'complete':job.stage==='rendering'?'rendering':job.waiting?'waiting':'active';
 
@@ -957,7 +980,7 @@ function contentFilterRows(){
   return (state.content?.rows||[]).filter(row=>{
     if(platform!=='all' && row.platform!==platform) return false;
     if(status!=='all' && row.status!==status) return false;
-    if(campaign!=='all' && row.campaign_id!==campaign) return false;
+    if(campaign!=='all' && !campaignMemberIds(campaign).has(row.campaign_id)) return false;
     if(cutoff && new Date(row.finished_at||row.created_at||0).getTime()<cutoff) return false;
     return true;
   });
