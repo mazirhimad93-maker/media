@@ -315,6 +315,58 @@ function clipFilterRows(){
   });
 }
 
+
+function clipProgressJobs(){
+  const campaign=$('clip-campaign-filter')?.value||'all';
+  const memberIds=campaign==='all'?null:campaignMemberIds(campaign);
+  return (state.jobs?.jobs||[])
+    .filter(job=>!memberIds || memberIds.has(job.campaign_id))
+    .filter(job=>!['complete'].includes(job.stage))
+    .sort((x,y)=>new Date(y.updated_at||0)-new Date(x.updated_at||0));
+}
+
+function clipJobProgressRow(job){
+  const campaign=campaignGroupForMemberId(job.campaign_id);
+  const expected=Math.max(Number(job.expected_clips||0),Number(job.variants?.total||0));
+  const produced=Number(job.variants?.total||0);
+  const ready=Number(job.variants?.approved||0);
+  const progress=Math.max(0,Math.min(100,Number(job.progress||0)));
+  const stage=job.stage_label||job.stage||'Processing';
+  const eta=job.waiting
+    ? 'Waiting for selection'
+    : job.error
+      ? (job.error_message||'Needs attention')
+      : (Number.isFinite(job.eta_minutes)&&job.eta_minutes>0
+          ? `≈ ${Math.max(1,Math.round(job.eta_minutes))} min left`
+          : 'Working…');
+
+  return `
+    <tr class="clip-progress-source-row">
+      <td></td>
+      <td>
+        <strong>${esc(job.title||'Source video')}</strong>
+        <div class="hook-text">Clip creation in progress · ${produced}${expected?'/'+expected:''} clips created · ${ready} ready</div>
+        <div class="job-progress-track" style="margin-top:8px;max-width:430px">
+          <div class="job-progress-fill" style="width:${progress}%"></div>
+        </div>
+        <div class="hook-text" style="margin-top:5px">${Math.round(progress)}% · ${esc(eta)}</div>
+      </td>
+      <td>${esc(campaign?.name||'—')}</td>
+      <td>
+        <span class="status-chip ${job.error?'status-failed':job.stage==='rendering'?'status-running':'status-ready'}">${esc(stage)}</span>
+        <div class="hook-text">Source: ${esc(job.source_status||'—')}</div>
+      </td>
+      <td>
+        <strong>${produced}${expected?'/'+expected:''}</strong>
+        <div class="hook-text">clips generated</div>
+      </td>
+      <td>
+        <span class="hook-text">${job.waiting?'Selection required':job.error?'Check job error':'Auto-updates on refresh'}</span>
+      </td>
+    </tr>
+  `;
+}
+
 function publishedDropdown(clip){
   const urls=clip.published_urls||[];
   if(!urls.length) return '—';
@@ -360,9 +412,12 @@ function renderClips(){
   ].join('');
 
   const rows=clipFilterRows();
+  const progressJobs=clipProgressJobs();
 
-  $('clips-table').innerHTML=rows.length
-    ? rows.map(clip=>{
+  $('clips-table').innerHTML=(rows.length||progressJobs.length)
+    ? [
+        ...progressJobs.map(clipJobProgressRow),
+        ...rows.map(clip=>{
       const performance=clipPerformance(clip);
       const canApprove=clip.publishing_approved===false;
       const checked=state.selectedClips.has(clip.id);
@@ -393,8 +448,9 @@ function renderClips(){
           </td>
         </tr>
       `;
-    }).join('')
-    : '<tr><td class="empty-row" colspan="6">No clips match the current filters.</td></tr>';
+    })
+      ].join('')
+    : '<tr><td class="empty-row" colspan="6">No clips or active clipping jobs match the current filters.</td></tr>';
 
   bindClipButtons();
   updateBulkBar();
@@ -874,6 +930,7 @@ async function refreshJobs(){
     state.jobs=await api('/api/clipper/jobs');
     renderJobs();
     renderCampaigns();
+    if(state.view==='clipping') renderClips();
   }catch(error){
     console.warn('Clipper progress refresh failed',error);
     if($('jobs-last-refresh')) $('jobs-last-refresh').textContent='Refresh failed';
