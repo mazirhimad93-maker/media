@@ -6,8 +6,9 @@ export default async (request) => {
   try{
     const {workspaceId}=await requireWorkspace(request);
 
-    const [campaigns,pools,memberships,accounts,variants,assets,queue,history,metrics,links,clicks,conversations,messages]=await Promise.all([
+    const [contentCampaigns,distributionCampaigns,pools,memberships,accounts,variants,assets,queue,history,metrics,links,clicks,conversations,messages]=await Promise.all([
       safe(scopedPath('content_campaigns?select=*&limit=500',workspaceId)),
+      safe(scopedPath('distribution_campaigns?select=*&limit=500',workspaceId)),
       safe(scopedPath('content_distribution_pools?select=*&limit=500',workspaceId)),
       safe(scopedPath('content_distribution_pool_accounts?select=pool_id,account_id,is_active,priority,weight&limit=5000',workspaceId)),
       safe(scopedPath('content_accounts?select=id,platform,username,display_name,status,is_active&limit=3000',workspaceId)),
@@ -82,12 +83,42 @@ export default async (request) => {
       if(campaignId) messageCountByCampaign.set(campaignId,(messageCountByCampaign.get(campaignId)||0)+1);
     }
 
-    const rows=(campaigns||[]).map(c=>{
-      const campaignVariants=(variants||[]).filter(v=>v.campaign_id===c.id);
+    const classifyCampaign=(campaign)=>{
+      const hay=[campaign?.slug,campaign?.name,campaign?.metadata?.campaign_group,campaign?.metadata?.client]
+        .filter(Boolean).join(' ').toLowerCase();
+      if(/(^|\\b)(alchemic|alchemix)(\\b|$)/.test(hay)) return 'alchemic';
+      if(/(^|\\b)(zach|zack)(\\b|$)/.test(hay)) return 'zach';
+      return 'whoop';
+    };
+
+    const groupDefs={
+      alchemic:{id:'group:alchemic',name:'Alchemic',description:'Alchemic brand growth, case studies and acquisition media.'},
+      zach:{id:'group:zach',name:'Zach',description:'Zach / Nanaki / Pet Influencer content and distribution.'},
+      whoop:{id:'group:whoop',name:'Whoop',description:'General clipping, testing and distribution campaigns.'}
+    };
+
+    const campaignGroups=new Map(Object.keys(groupDefs).map(key=>[key,{
+      ...groupDefs[key],members:[],contentMembers:[],distributionMembers:[]
+    }]));
+
+    for(const campaign of contentCampaigns||[]){
+      const key=classifyCampaign(campaign);
+      campaignGroups.get(key).members.push(campaign);
+      campaignGroups.get(key).contentMembers.push(campaign);
+    }
+    for(const campaign of distributionCampaigns||[]){
+      const key=classifyCampaign(campaign);
+      campaignGroups.get(key).members.push(campaign);
+      campaignGroups.get(key).distributionMembers.push(campaign);
+    }
+
+    const rows=[...campaignGroups.entries()].map(([groupKey,group])=>{
+      const memberIds=new Set(group.members.map(x=>x.id).filter(Boolean));
+      const campaignVariants=(variants||[]).filter(v=>memberIds.has(v.campaign_id));
       const variantIds=new Set(campaignVariants.map(v=>v.id));
-      const campaignAssets=(assets||[]).filter(a=>a.campaign_id===c.id || (a.clip_variant_id && variantIds.has(a.clip_variant_id)));
+      const campaignAssets=(assets||[]).filter(a=>memberIds.has(a.campaign_id) || (a.clip_variant_id && variantIds.has(a.clip_variant_id)));
       const assetIds=new Set(campaignAssets.map(a=>a.id));
-      const campaignQueue=(queue||[]).filter(q=>q.campaign_id===c.id || assetIds.has(q.asset_id));
+      const campaignQueue=(queue||[]).filter(q=>memberIds.has(q.campaign_id) || assetIds.has(q.asset_id));
       const published=campaignQueue.filter(q=>q.status==='done'||q.external_post_id||q.external_post_url);
       const failed=campaignQueue.filter(q=>q.status==='failed');
       const ready=campaignQueue.filter(q=>q.status==='ready');
@@ -110,35 +141,34 @@ export default async (request) => {
         const id=q.selected_account_id||q.account_id;
         if(id) channelIds.add(id);
       }
-      if(c.distribution_pool_id){
-        for(const m of memberships||[]){
-          if(m.pool_id===c.distribution_pool_id && m.is_active!==false) channelIds.add(m.account_id);
+      for(const member of group.contentMembers){
+        if(!member.distribution_pool_id) continue;
+        for(const membership of memberships||[]){
+          if(membership.pool_id===member.distribution_pool_id && membership.is_active!==false) channelIds.add(membership.account_id);
         }
       }
       const channels=[...channelIds].map(id=>accountById.get(id)).filter(Boolean);
+      const timestamps=group.members.flatMap(x=>[x.updated_at,x.created_at]).filter(Boolean).map(x=>new Date(x).getTime()).filter(Number.isFinite);
+      const active=group.members.some(x=>x.status==='active');
 
       return {
-        id:c.id,
-        name:c.name||'Untitled campaign',
-        status:c.status||'unknown',
-        description:c.description||null,
-        distribution_pool_id:c.distribution_pool_id||null,
-        pool_name:poolById.get(c.distribution_pool_id)?.name||null,
-        created_at:c.created_at||null,
-        updated_at:c.updated_at||null,
+        id:group.id,group_key:groupKey,name:group.name,
+        status:active?'active':(group.members[0]?.status||'active'),
+        description:group.description,distribution_pool_id:null,
+        pool_name:group.contentMembers.map(x=>poolById.get(x.distribution_pool_id)?.name).filter(Boolean)[0]||null,
+        created_at:timestamps.length?new Date(Math.min(...timestamps)).toISOString():null,
+        updated_at:timestamps.length?new Date(Math.max(...timestamps)).toISOString():null,
+        member_campaign_ids:[...memberIds],
+        member_campaigns:group.members.map(x=>({id:x.id,name:x.name,slug:x.slug,status:x.status})),
         clips:campaignVariants.length || campaignAssets.length,
         assets:campaignAssets.length,
         needs_approval:campaignAssets.filter(a=>a.media_publish_approved===false).length,
         approved:campaignAssets.filter(a=>a.media_publish_approved!==false).length,
-        queue_jobs:campaignQueue.length,
-        ready:ready.length,
-        running:running.length,
-        failed:failed.length,
-        published:published.length,
-        views,likes,comments,shares,saves,
-        link_clicks:clickCountByCampaign.get(c.id)||0,
-        conversations:conversationCountByCampaign.get(c.id)||0,
-        messages:messageCountByCampaign.get(c.id)||0,
+        queue_jobs:campaignQueue.length,ready:ready.length,running:running.length,failed:failed.length,
+        published:published.length,views,likes,comments,shares,saves,
+        link_clicks:[...memberIds].reduce((n,id)=>n+(clickCountByCampaign.get(id)||0),0),
+        conversations:[...memberIds].reduce((n,id)=>n+(conversationCountByCampaign.get(id)||0),0),
+        messages:[...memberIds].reduce((n,id)=>n+(messageCountByCampaign.get(id)||0),0),
         platforms:[...new Set(campaignQueue.map(q=>q.platform).filter(Boolean))],
         channels:channels.map(a=>({id:a.id,platform:a.platform,username:a.username||a.display_name||a.id})),
         published_urls:published.map(q=>({platform:q.platform,url:q.external_post_url,id:q.external_post_id,status:q.status})).filter(x=>x.url||x.id)
