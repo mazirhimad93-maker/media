@@ -4,6 +4,14 @@ if(!media) throw new Error('Alchemic core unavailable');
 const {state,api,esc,fmt,platformLabel,dateShort}=media;
 const $=id=>document.getElementById(id);
 
+function publicMediaUrl(value){
+  const s=String(value||'').trim();
+  if(!s) return null;
+  const match=s.match(/^https?:\/\/(?:54\.172\.230\.194|172\.31\.45\.144|127\.0\.0\.1):8091\/outputs\/([^?#]+)(?:[?#].*)?$/i);
+  if(!match) return s;
+  return '/media/'+encodeURIComponent(decodeURIComponent(match[1]));
+}
+
 function findClip(id){
   return (state.clips?.clips||[]).find(x=>String(x.id)===String(id))||null;
 }
@@ -13,8 +21,8 @@ async function recover(clip){
   try{
     const result=await api('/api/clips/render/recover',{method:'POST',body:{id:clip.id}});
     if(result?.render_url){
-      clip.render_url=result.render_url;
-      return result.render_url;
+      clip.render_url=publicMediaUrl(result.render_url);
+      return clip.render_url;
     }
   }catch(error){
     console.warn('Clip render recovery:',error);
@@ -35,7 +43,7 @@ function performance(clip){
 }
 
 function previewSource(clip){
-  if(clip.render_url) return {url:clip.render_url,final:true};
+  if(clip.render_url) return {url:publicMediaUrl(clip.render_url),final:true};
   if(clip.source_preview_url) return {url:clip.source_preview_url,final:false};
   return {url:null,final:false};
 }
@@ -183,7 +191,7 @@ function enhanceRows(){
     const clip=findClip(id);
     if(!clip) continue;
     const actionWrap=detail.closest('tr')?.querySelector('.clip-actions');
-    if(actionWrap && !actionWrap.querySelector('.enhanced-preview-clip') && (clip.render_url||clip.render_status_url||clip.source_preview_url)){
+    if(actionWrap && !actionWrap.querySelector('.preview-clip,.enhanced-preview-clip') && (clip.render_url||clip.render_status_url||clip.source_preview_url)){
       const button=document.createElement('button');
       button.type='button';
       button.className='open-btn enhanced-preview-clip';
