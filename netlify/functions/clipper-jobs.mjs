@@ -89,6 +89,13 @@ function jobFrom(source,variants,renderMedian){
     updated_at:updatedAt,
     created_at:source.created_at,
     ingest_provider:metadata.ingest_provider||null,
+    expected_clips:Number(
+      metadata.expected_render_count
+      || metadata?.editing_request?.desired_clip_count
+      || metadata?.editing_request?.max_moments
+      || metadata?.editing_request?.expected_render_count
+      || 0
+    )||0,
     variants:{
       total:v.length,
       planned:planned.length,
