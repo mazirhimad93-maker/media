@@ -1,5 +1,41 @@
 import { jsonResponse, publicError, requireWorkspace, supabaseRequest } from './_shared.mjs';
 const slugify=s=>String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80);
+const DYNAMIC_LAYER_TYPES=new Set(['video','image','shape','text','hook','captions','cta']);
+const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+const validatePresetJson=preset=>{
+  if(!isObj(preset)) throw Object.assign(new Error('Preset JSON must be an object'),{status:400});
+  if(!isObj(preset.composition)) return {preset,contract:String(preset.renderer_contract_version||'13.6')};
+
+  const composition={...preset.composition};
+  composition.schema_version=String(composition.schema_version||'1.0');
+  if(!['1','1.0','1.1'].includes(composition.schema_version)){
+    throw Object.assign(new Error('Unsupported composition schema_version'),{status:400});
+  }
+
+  const layers=Array.isArray(composition.layers)?composition.layers:[];
+  if(!layers.length) throw Object.assign(new Error('Dynamic presets require at least one composition layer'),{status:400});
+  if(layers.length>50) throw Object.assign(new Error('Dynamic presets support at most 50 layers'),{status:400});
+
+  for(const [index,raw] of layers.entries()){
+    if(!isObj(raw)) throw Object.assign(new Error('Composition layer '+(index+1)+' must be an object'),{status:400});
+    const type=String(raw.type||'').toLowerCase();
+    if(!DYNAMIC_LAYER_TYPES.has(type)) throw Object.assign(new Error('Unsupported composition layer type: '+(type||'(missing)')),{status:400});
+    if(['video','image'].includes(type)&&!raw.source&&!raw.url){
+      throw Object.assign(new Error(type+' layer '+(index+1)+' requires source or url'),{status:400});
+    }
+  }
+
+  const canvas=isObj(composition.canvas)?composition.canvas:{};
+  const width=Number(canvas.width||1080),height=Number(canvas.height||1920);
+  if(width<360||height<640||width>2160||height>3840){
+    throw Object.assign(new Error('Dynamic preset canvas is outside supported dimensions'),{status:400});
+  }
+
+  return {
+    preset:{...preset,renderer_contract_version:'14.0',composition:{...composition,canvas:{width,height,background_color:String(canvas.background_color||'#000000')}}},
+    contract:'14.0'
+  };
+};
 
 export default async request=>{
   try{
@@ -34,7 +70,9 @@ export default async request=>{
     if(!presetJson||typeof presetJson!=='object'||Array.isArray(presetJson)) return jsonResponse({error:'Choose a base preset or provide preset JSON'},400);
 
     presetJson={...presetJson,style_id:presetJson.style_id||slug,template_id:presetJson.template_id||slug,label:presetJson.label||name};
-    const contract=String(presetJson.renderer_contract_version||'13.6');
+    const checked=validatePresetJson(presetJson);
+    presetJson=checked.preset;
+    const contract=checked.contract;
 
     const existing=await supabaseRequest(
       workspaceId
