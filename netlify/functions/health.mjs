@@ -3,13 +3,11 @@ import { jsonResponse, providerConfig, supabaseRequest } from './_shared.mjs';
 export default async(request)=>{
   const url=new URL(request.url);
   if(url.searchParams.get('alchemix')==='1'){
-    const jobUrl='http://54.172.230.194:8092/jobs/6e9920ea-f444-4a6f-8687-c889bfa7fe06';
     try{
-      const response=await fetch(jobUrl,{headers:{accept:'application/json'}});
-      const text=await response.text();
-      let payload=null;
-      try{payload=text?JSON.parse(text):null}catch{payload={raw:text}}
-      return jsonResponse({ok:response.ok,status:response.status,payload},response.ok?200:502);
+      const rows=await supabaseRequest(
+        'campaign_sources?id=eq.87eafebe-82c3-41c2-a460-b0333490ab61&select=id,title,status,analysis_job_id,analysis_status_url,analysis_result,transcript,transcript_json,duration_seconds,metadata,error_message,updated_at&limit=1'
+      );
+      return jsonResponse({ok:true,source:rows?.[0]||null});
     }catch(error){
       return jsonResponse({ok:false,error:String(error?.message||error)},502);
     }
