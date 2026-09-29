@@ -1037,3 +1037,13 @@ button{cursor:pointer}
   .clip-job-title-line{min-width:240px;display:grid}
   .clip-job-group-row .job-progress-track{max-width:260px!important}
 }
+
+
+/* Dynamic V14 preset preview */
+.dynamic-composition-layer{position:absolute}
+.dynamic-image-placeholder{display:grid;place-items:center;background:linear-gradient(145deg,#111827,#0f172a);border-radius:10px;color:#fff}
+.dynamic-image-placeholder img{width:100%;height:100%;object-fit:cover;display:block}
+.dynamic-image-label{text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;opacity:.9}
+.dynamic-image-label small{display:block;margin-top:3px;font-size:8px;font-weight:600;color:#cbd5e1}
+.dynamic-shape-layer{pointer-events:none}
+.dynamic-layer-tag{position:absolute;left:5px;bottom:5px;background:rgba(15,23,42,.78);color:#fff;border-radius:4px;padding:3px 5px;font-size:7px;font-weight:800;letter-spacing:.05em}
