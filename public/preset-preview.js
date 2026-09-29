@@ -19,8 +19,105 @@ const pct=(value,fallback)=>Math.max(0,Math.min(100,Number.isFinite(Number(value
 const clamp=(value,min,max,fallback)=>Math.max(min,Math.min(max,Number.isFinite(Number(value))?Number(value):fallback));
 const text=value=>String(value??'').trim();
 
+function starterPreset(){
+  return {
+    renderer_contract_version:'14.0',
+    style_id:'dynamic-v14-preset',
+    template_id:'dynamic-v14-preset',
+    label:'Dynamic V14 Preset',
+    composition:{
+      schema_version:'1.0',
+      canvas:{width:1080,height:1920,background_color:'#090909'},
+      thumbnail:{enabled:true,seconds:.35},
+      audio:{use_source_audio:true,music_gain_db:-24},
+      layers:[
+        {id:'source_video',type:'video',source:'source_video',z_index:10,x_percent:50,y_percent:37,width_percent:92,height_percent:46,anchor:'center',fit:'contain'},
+        {id:'hook',type:'hook',source:'hook',z_index:40,x_percent:50,y_percent:9,style:{font_family:'Inter',font_size_ratio:.035,font_weight:800,color:'#FFFFFF',highlight_color:'#F5B83D',max_width_percent:88,max_lines:2,outline_color:'#000000',outline_width_px:3}},
+        {id:'captions',type:'captions',source:'transcript_segments',z_index:45,x_percent:50,y_percent:76,style:{enabled:true,font_family:'Inter',font_size_ratio:.026,font_weight:700,color:'#FFFFFF',highlight_color:'#F5B83D',outline_color:'#000000',outline_width_px:2,max_width_percent:84,max_lines:2,words_per_chunk:6,words_per_line:3}},
+        {id:'cta',type:'cta',source:'cta',z_index:50,x_percent:50,y_percent:89,timing:{mode:'last_seconds',duration_seconds:4},style:{font_family:'Inter',font_size_ratio:.024,font_weight:800,color:'#FFFFFF',background_enabled:true,background_color:'#18181B',background_opacity:.94,max_width_percent:82,max_lines:3}}
+      ]
+    }
+  };
+}
+
+function dynamicComposition(raw){
+  const root=asObj(raw);
+  return asObj(root.composition);
+}
+
+function dynamicLayerBox(layer){
+  const position=asObj(layer.position);
+  const size=asObj(layer.size);
+  const x=pct(position.x_percent??layer.x_percent,50);
+  const y=pct(position.y_percent??layer.y_percent,50);
+  const w=pct(size.width_percent??layer.width_percent,30);
+  const h=pct(size.height_percent??layer.height_percent,20);
+  const anchor=text(position.anchor||layer.anchor||'center');
+  const transform=anchor==='top_left'?'none':'translate(-50%,-50%)';
+  return `left:${x}%;top:${y}%;width:${w}%;height:${h}%;transform:${transform}`;
+}
+
+function dynamicTextStyle(layer,defaults={}){
+  const style={...defaults,...asObj(layer.style),...asObj(layer.typography)};
+  const position={...asObj(layer.position)};
+  return layerStyle({
+    ...style,
+    position_x_percent:position.x_percent??layer.x_percent??style.position_x_percent,
+    position_y_percent:position.y_percent??layer.y_percent??style.position_y_percent
+  },defaults);
+}
+
+function renderDynamic(host,meta,preset,sourceLabel){
+  const composition=dynamicComposition(preset);
+  const canvas=asObj(composition.canvas);
+  const layers=(Array.isArray(composition.layers)?composition.layers:[])
+    .map((layer,index)=>({...asObj(layer),__index:index,z_index:Number(asObj(layer).z_index??index)}))
+    .sort((a,b)=>a.z_index-b.z_index||a.__index-b.__index);
+
+  host.style.background=cssColor(canvas.background_color,'#09090b');
+  const html=['<div class="preset-safe-zone"></div>'];
+
+  for(const layer of layers){
+    const type=text(layer.type).toLowerCase();
+    if(type==='video'){
+      html.push(`<div class="preset-video-placeholder dynamic-composition-layer" style="${dynamicLayerBox(layer)};overflow:hidden">${mockVideoHtml()}<div class="dynamic-layer-tag">VIDEO · ${esc(text(layer.source)||'source_video')}</div></div>`);
+      continue;
+    }
+    if(type==='image'){
+      const directUrl=text(layer.url);
+      html.push(`<div class="dynamic-image-placeholder dynamic-composition-layer" style="${dynamicLayerBox(layer)};border:${Math.max(1,Number(layer.border_width_px||2))}px solid ${cssColor(layer.border_color,'#F5B83D')};overflow:hidden">${/^https:\/\//i.test(directUrl)?`<img src="${esc(directUrl)}" alt="">`:`<div class="dynamic-image-label">IMAGE<br><small>${esc(text(layer.source)||'asset')}</small></div>`}</div>`);
+      continue;
+    }
+    if(type==='shape'){
+      const style=asObj(layer.style);
+      const color=cssColor(style.color||layer.color,'#F5B83D');
+      const opacity=clamp(style.opacity??layer.opacity,0,1,1);
+      html.push(`<div class="dynamic-shape-layer dynamic-composition-layer" style="${dynamicLayerBox(layer)};background:${color};opacity:${opacity}"></div>`);
+      continue;
+    }
+    if(['hook','cta','text','captions'].includes(type)){
+      let sample='';
+      if(type==='hook') sample='YOUR HOOK / HEADLINE';
+      else if(type==='cta') sample='YOUR CALL TO ACTION';
+      else if(type==='captions') sample='This is how captions will appear';
+      else sample=text(layer.text)||'TEXT LAYER';
+      html.push(`<div class="preset-text-layer dynamic-composition-layer" style="${dynamicTextStyle(layer,{position_x_percent:50,position_y_percent:50,max_width_percent:86,font_size_ratio:type==='hook'?.035:type==='cta'?.024:.026,font_weight:type==='hook'||type==='cta'?800:700,color:'#ffffff',outline_color:'#000000'})}">${esc(sample)}</div>`);
+    }
+  }
+
+  host.innerHTML=html.join('');
+  meta.innerHTML=[
+    ['Source',sourceLabel],
+    ['Engine','Dynamic V14'],
+    ['Schema',text(composition.schema_version||'1.0')],
+    ['Layers',String(layers.length)],
+    ['Canvas',String(Number(canvas.width||1080))+'×'+String(Number(canvas.height||1920))],
+    ['Renderer','14.0']
+  ].map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
+}
 function selectedBase(){
   const slug=$('preset-base')?.value;
+  if(slug==='__dynamic_v14__') return null;
   return (state.presets?.presets||[]).find(p=>String(p.slug)===String(slug))||null;
 }
 
@@ -47,6 +144,9 @@ function rawPreset(){
   }
 
   const base=selectedBase();
+  if($('preset-base')?.value==='__dynamic_v14__'){
+    return {json:starterPreset(),source:'Blank Dynamic V14',error:null};
+  }
   return {
     json:base?.preset_json||{},
     source:base?.name||'Base preset',
@@ -125,6 +225,17 @@ function render(){
     if(!host||!meta||!error) return;
 
     const loaded=rawPreset();
+    if(Object.keys(dynamicComposition(loaded.json)).length){
+      renderDynamic(host,meta,loaded.json,loaded.source);
+      if(loaded.error){
+        error.textContent=loaded.error;
+        error.hidden=false;
+      }else{
+        error.textContent='';
+        error.hidden=true;
+      }
+      return;
+    }
     const style=unwrapPreset(loaded.json);
     const video={...asObj(style.base_geometry),...asObj(style.video_config)};
     const hook={...asObj(style.hook_config)};
@@ -314,6 +425,11 @@ function inject(){
   grid.insertAdjacentElement('afterend',aside);
 
   $('preset-load-base-json')?.addEventListener('click',()=>{
+    if($('preset-base')?.value==='__dynamic_v14__'){
+      $('preset-json').value=JSON.stringify(starterPreset(),null,2);
+      render();
+      return;
+    }
     const base=selectedBase();
     if(!base?.preset_json) return;
     $('preset-json').value=JSON.stringify(base.preset_json,null,2);
@@ -398,5 +514,6 @@ window.__alchemicPresetPreview={
   render,
   open,
   reset,
-  previewPreset
+  previewPreset,
+  starterPreset
 };
