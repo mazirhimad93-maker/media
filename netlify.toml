@@ -169,6 +169,12 @@
   to = "/.netlify/functions/track-link?slug=:slug"
   status = 200
 
+[[redirects]]
+  from = "/media/:file"
+  to = "http://54.172.230.194:5678/webhook/media?file=:file"
+  status = 200
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]
