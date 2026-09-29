@@ -149,6 +149,23 @@ function campaignGroupForMemberId(memberId){
   return (state.campaigns?.campaigns||[]).find(c=>campaignMemberIds(c).has(memberId))||null;
 }
 
+function campaignGroupKey(value){
+  const hay=[value?.group_key,value?.slug,value?.campaign_slug,value?.name,value?.campaign_name]
+    .filter(Boolean).join(' ').toLowerCase();
+  if(/(^|\b)(alchemic|alchemix)(\b|$)/.test(hay)) return 'alchemic';
+  if(/(^|\b)(zach|zack)(\b|$)/.test(hay)) return 'zach';
+  return 'whoop';
+}
+
+function jobBelongsToCampaignGroup(job,campaignOrId){
+  const campaign=typeof campaignOrId==='string'
+    ? (state.campaigns?.campaigns||[]).find(c=>c.id===campaignOrId)
+    : campaignOrId;
+  if(!campaign) return false;
+  if(campaignMemberIds(campaign).has(job.campaign_id)) return true;
+  return campaignGroupKey(job)===campaignGroupKey(campaign);
+}
+
 function populateCampaignFilters(){
   const campaigns=allCampaigns();
   const options=campaigns
@@ -317,10 +334,12 @@ function clipFilterRows(){
 
 
 function clipProgressJobs(){
-  const campaign=$('clip-campaign-filter')?.value||'all';
-  const memberIds=campaign==='all'?null:campaignMemberIds(campaign);
+  const campaignId=$('clip-campaign-filter')?.value||'all';
+  const campaign=campaignId==='all'
+    ? null
+    : (state.campaigns?.campaigns||[]).find(c=>c.id===campaignId)||null;
   return (state.jobs?.jobs||[])
-    .filter(job=>!memberIds || memberIds.has(job.campaign_id))
+    .filter(job=>!campaign || jobBelongsToCampaignGroup(job,campaign))
     .filter(job=>!['complete'].includes(job.stage))
     .sort((x,y)=>new Date(y.updated_at||0)-new Date(x.updated_at||0));
 }
@@ -712,17 +731,19 @@ function populatePresetOptions(){
 }
 
 function campaignLiveProgress(campaignId){
-  const ids=campaignMemberIds(campaignId);
-  const matches=(state.jobs?.campaign_progress||[]).filter(x=>ids.has(x.id));
+  const campaign=(state.campaigns?.campaigns||[]).find(c=>c.id===campaignId)||null;
+  if(!campaign) return null;
+  const matches=(state.jobs?.jobs||[]).filter(job=>jobBelongsToCampaignGroup(job,campaign));
   if(!matches.length) return null;
-  const activeJobs=matches.reduce((n,x)=>n+Number(x.active_jobs||0),0);
+  const active=matches.filter(j=>!['complete','failed'].includes(j.stage));
   const progress=matches.reduce((n,x)=>n+Number(x.progress||0),0)/matches.length;
+  const knownEta=matches.map(x=>Number(x.eta_minutes)).filter(x=>Number.isFinite(x)&&x>0);
   return {
     progress,
-    active_jobs:activeJobs,
+    active_jobs:active.length,
     waiting:matches.some(x=>x.waiting),
     error:matches.some(x=>x.error),
-    eta_minutes:Math.max(0,...matches.map(x=>Number(x.eta_minutes||0)))
+    eta_minutes:knownEta.length?Math.max(...knownEta):0
   };
 }
 
