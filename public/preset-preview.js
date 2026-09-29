@@ -70,6 +70,7 @@ function dynamicTextStyle(layer,defaults={}){
 function renderDynamic(host,meta,preset,sourceLabel){
   const composition=dynamicComposition(preset);
   const canvas=asObj(composition.canvas);
+  const presetAssets=asObj(asObj(preset).assets);
   const layers=(Array.isArray(composition.layers)?composition.layers:[])
     .map((layer,index)=>({...asObj(layer),__index:index,z_index:Number(asObj(layer).z_index??index)}))
     .sort((a,b)=>a.z_index-b.z_index||a.__index-b.__index);
@@ -84,7 +85,10 @@ function renderDynamic(host,meta,preset,sourceLabel){
       continue;
     }
     if(type==='image'){
-      const directUrl=text(layer.url);
+      const sourceKey=text(layer.source).replace(/^asset:/,'');
+      const assetValue=presetAssets[sourceKey];
+      const assetUrl=typeof assetValue==='string'?assetValue:text(asObj(assetValue).url||asObj(assetValue).public_url);
+      const directUrl=text(layer.url||assetUrl);
       html.push(`<div class="dynamic-image-placeholder dynamic-composition-layer" style="${dynamicLayerBox(layer)};border:${Math.max(1,Number(layer.border_width_px||2))}px solid ${cssColor(layer.border_color,'#F5B83D')};overflow:hidden">${/^https:\/\//i.test(directUrl)?`<img src="${esc(directUrl)}" alt="">`:`<div class="dynamic-image-label">IMAGE<br><small>${esc(text(layer.source)||'asset')}</small></div>`}</div>`);
       continue;
     }
