@@ -798,8 +798,9 @@ function populatePresetOptions(){
   const base=$('preset-base');
   if(base){
     const current=base.value;
-    base.innerHTML=options||'<option value="source_native">Source Native</option>';
+    base.innerHTML='<option value="__dynamic_v14__">Blank Dynamic V14 · layer composer</option>'+(options||'');
     if(current && [...base.options].some(o=>o.value===current)) base.value=current;
+    else if(!base.value) base.value='__dynamic_v14__';
   }
 }
 
@@ -989,6 +990,9 @@ async function submitPreset(event){
     if(raw){
       try{presetJson=JSON.parse(raw);}catch{throw new Error('Advanced preset JSON is not valid JSON');}
     }
+    if(!presetJson && $('preset-base').value==='__dynamic_v14__'){
+      presetJson=window.__alchemicPresetPreview?.starterPreset?.()||null;
+    }
 
     const result=await api('/api/clipper/presets',{
       method:'POST',
@@ -997,7 +1001,7 @@ async function submitPreset(event){
         name:$('preset-name').value,
         slug:$('preset-slug').value,
         description:$('preset-description').value,
-        base_preset_slug:$('preset-base').value,
+        base_preset_slug:$('preset-base').value==='__dynamic_v14__'?null:$('preset-base').value,
         preview_url:$('preset-preview-url').value||null,
         preset_json:presetJson
       }
