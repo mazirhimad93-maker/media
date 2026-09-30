@@ -469,6 +469,8 @@ function messageFallback(m) {
 function conversationSendState(result = media.state.inbox.conversation || {}) {
   const messages=result.messages||[];
   const outbox=result.outbox||[];
+  const automationEvents=result.comment_automation_events||[];
+  const latestAutomation=automationEvents[0]||null;
   const hasInboundDm=messages.some(m=>m.direction==='inbound'&&m.message_type!=='comment');
   const comments=messages
     .filter(m=>m.direction==='inbound'&&m.message_type==='comment'&&m.platform_message_id)
@@ -480,20 +482,44 @@ function conversationSendState(result = media.state.inbox.conversation || {}) {
   const availableComment=comments.find(m=>!reserved.has(String(m.platform_message_id)));
   const hasPrivateReply=outbox.some(item=>item.reply_mode==='private_reply'&&['pending','sending','sent'].includes(item.status));
 
-  if(hasInboundDm) return {mode:'dm',label:'DM window open · send normally',locked:false,privateReply:false};
-  if(availableComment) return {
-    mode:'private_reply',
-    label:'Comment lead · your first text will be sent as Instagram’s private reply. After they answer, normal DMs unlock.',
+  if(hasInboundDm) return {
+    mode:'dm',
+    label:'DM window open · send normally',
     locked:false,
-    privateReply:true
+    privateReply:false,
+    automation:latestAutomation
   };
+  if(availableComment){
+    const failed=latestAutomation?.status==='failed'
+      ? `Auto private reply failed: ${latestAutomation.error_message||'Meta rejected the send'}. Send a text below to retry this comment as a private reply.`
+      : latestAutomation
+        ? `Comment automation status: ${latestAutomation.status}. You can send a text below as the private reply.`
+        : 'Comment lead detected · no private reply has been recorded yet. Your first text below will be sent as Instagram’s private reply.';
+    return {
+      mode:'private_reply',
+      label:failed,
+      locked:false,
+      privateReply:true,
+      automation:latestAutomation
+    };
+  }
   if(hasPrivateReply) return {
     mode:'waiting',
-    label:'Private reply sent · waiting for this person to answer on Instagram before another DM can be sent.',
+    label:latestAutomation?.status==='sent'
+      ? 'Private reply accepted by Instagram · check the commenter’s Requests/Invitations folder. Waiting for their reply before another DM can be sent.'
+      : 'Private reply sent · waiting for this person to answer on Instagram before another DM can be sent.',
     locked:true,
-    privateReply:false
+    privateReply:false,
+    automation:latestAutomation
   };
-  return {mode:'dm',label:'Sent through your connected channel',locked:false,privateReply:false};
+  if(latestAutomation?.status==='failed') return {
+    mode:'blocked',
+    label:`Comment automation failed: ${latestAutomation.error_message||'unknown Meta error'}`,
+    locked:false,
+    privateReply:false,
+    automation:latestAutomation
+  };
+  return {mode:'dm',label:'Sent through your connected channel',locked:false,privateReply:false,automation:latestAutomation};
 }
 
 function updateComposerState(result = media.state.inbox.conversation || {}) {
