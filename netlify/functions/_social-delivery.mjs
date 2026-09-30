@@ -69,7 +69,7 @@ export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fe
   try{
     const [accounts,contacts]=await Promise.all([
       db(`content_accounts?id=eq.${encodeURIComponent(job.account_id)}&select=id,platform,platform_account_id,username,access_token,capabilities_json&limit=1`),
-      db(`social_contacts?id=eq.${encodeURIComponent(job.contact_id)}&select=id,platform,platform_user_id,username,display_name&limit=1`)
+      db(`social_contacts?id=eq.${encodeURIComponent(job.contact_id)}&select=id,platform,platform_user_id,username,display_name,metadata&limit=1`)
     ]);
     account=accounts?.[0]; contact=contacts?.[0];
     if(!account||!contact) throw new Error('Account or contact not found');
@@ -102,6 +102,7 @@ export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fe
         body:{
           platform_user_id:String(sent.recipientId),
           metadata:{
+            ...(contact.metadata||{}),
             private_reply_recipient_id:String(sent.recipientId),
             comment_platform_user_id:contact.platform_user_id||null
           },
