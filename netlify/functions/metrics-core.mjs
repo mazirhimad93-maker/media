@@ -297,6 +297,44 @@ async function instagramMetrics(post,account){
   return out;
 }
 
+function tiktokVideoId(post){
+  const raw=String(post?.external_post_id||'').trim();
+  if(/^\d{8,30}$/.test(raw)) return raw;
+  const value=String(post?.external_post_url||raw||'').trim();
+  const match=value.match(/\/video\/(\d{8,30})/);
+  return match?.[1]||raw;
+}
+
+async function tiktokMetrics(post,account){
+  if(!account.access_token) throw new Error('TikTok access token missing');
+  const videoId=tiktokVideoId(post);
+  if(!videoId) throw new Error('TikTok video ID missing');
+
+  const url=new URL('https://open.tiktokapis.com/v2/video/query/');
+  url.searchParams.set('fields','id,share_url,view_count,like_count,comment_count,share_count');
+  const response=await fetch(url,{
+    method:'POST',
+    headers:{authorization:'Bearer '+account.access_token,'content-type':'application/json'},
+    body:JSON.stringify({filters:{video_ids:[videoId]}})
+  });
+  const data=await response.json().catch(()=>({}));
+  const apiError=data?.error;
+  const apiOk=apiError==null||apiError.code===0||apiError.code==='ok';
+  if(!response.ok||!apiOk) throw new Error(apiError?.message||'TikTok video metrics failed');
+
+  const video=(data.data?.videos||[]).find(v=>String(v.id)===String(videoId))||data.data?.videos?.[0];
+  if(!video) throw new Error('TikTok did not return statistics for this video');
+
+  return {
+    views:num(video.view_count),
+    likes:num(video.like_count),
+    comments:num(video.comment_count),
+    shares:num(video.share_count),
+    saves:0,
+    raw_json:{video}
+  };
+}
+
 async function facebookMetrics(post,account){
   if(!account.access_token) throw new Error('Facebook Page access token missing');
   const version=process.env.FACEBOOK_API_VERSION?.trim()||'v26.0';
@@ -347,6 +385,7 @@ function refreshAfterMinutes(post){
 async function metricsFor(post,account){
   if(account.platform==='instagram_reels') return instagramMetrics(post,account);
   if(account.platform==='facebook_page'||account.platform==='facebook') return facebookMetrics(post,account);
+  if(account.platform==='tiktok_video'||account.platform==='tiktok') return tiktokMetrics(post,account);
   throw Object.assign(new Error('Metrics not supported for '+account.platform),{unsupported:true});
 }
 
