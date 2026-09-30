@@ -362,7 +362,7 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
       workspaceId
     )).catch(()=>[]),
     supabaseRequest(scopedPath(
-      'content_accounts?select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,scope,settings_json,metadata&limit=3000',
+      'content_accounts?select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,scope,settings_json&limit=3000',
       workspaceId
     )).catch(()=>[]),
     supabaseRequest(scopedPath(
@@ -391,17 +391,6 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     const account=accountById.get(accountId);
     if(!account){
       results.push({queue_id:post.id,history_id:h.id,status:'skipped',error:'publishing account missing'});
-      continue;
-    }
-
-    if(account?.metadata?.demo===true){
-      results.push({
-        queue_id:post.id,
-        history_id:h.id,
-        platform:account.platform,
-        status:'skipped',
-        reason:'demo_workspace_metrics_are_seeded'
-      });
       continue;
     }
 
