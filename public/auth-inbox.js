@@ -45,8 +45,19 @@ function updateUserUi() {
   $('user-role').textContent = profile.role || 'member';
   $('user-email').textContent = email;
   $('user-avatar').textContent = initials;
-  const workspaceName = media.state.auth.workspace?.name || 'Media workspace';
+  const workspace = media.state.auth.workspace || {};
+  const workspaceName = workspace.name || 'Media workspace';
   document.querySelectorAll('.workspace-card span').forEach(el=>{ el.textContent=workspaceName; });
+  const modeBadge=$('workspace-mode-badge');
+  if(modeBadge){
+    if(workspace.is_demo===true){
+      modeBadge.textContent='Sample data';
+      modeBadge.title=workspace.demo_note||'This workspace contains synthetic sample performance and conversations for product demonstration.';
+    }else{
+      modeBadge.textContent='Internal';
+      modeBadge.removeAttribute('title');
+    }
+  }
 }
 
 function showAuth(message) {
