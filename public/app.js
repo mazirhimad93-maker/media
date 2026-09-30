@@ -15,6 +15,7 @@ const state={
   auth:{accessToken:null,user:null,profile:null,workspace:null},
   inbox:{social:[],selected:null,conversation:null},
   selectedClips:new Set(),
+  selectedJobs:new Set(),
   expandedClipJobs:new Set(),
   view:'overview'
 };
@@ -829,8 +830,71 @@ function etaLabel(job){
   return 'Working…';
 }
 
+function updateJobSelectionBar(rows=[]){
+  const ids=rows.map(job=>String(job.source_id));
+  const selected=ids.filter(id=>state.selectedJobs.has(id));
+  const toolbar=$('clip-jobs-toolbar');
+  if(toolbar) toolbar.hidden=rows.length===0;
+
+  const count=$('selected-jobs-count');
+  if(count) count.textContent=`${selected.length} selected`;
+
+  const selectAll=$('select-visible-jobs');
+  if(selectAll){
+    selectAll.checked=ids.length>0 && ids.every(id=>state.selectedJobs.has(id));
+    selectAll.indeterminate=selected.length>0 && selected.length<ids.length;
+  }
+
+  const del=$('delete-selected-jobs');
+  if(del) del.disabled=state.selectedJobs.size===0;
+}
+
+async function deleteSelectedClipperJobs(){
+  const ids=[...state.selectedJobs];
+  if(!ids.length) return;
+
+  const selected=(state.jobs?.jobs||[]).filter(job=>state.selectedJobs.has(String(job.source_id)));
+  const names=selected.slice(0,3).map(job=>job.title||'Clipper job');
+  const more=Math.max(0,selected.length-names.length);
+  const label=names.length
+    ? names.join(', ')+(more?` +${more} more`:'')
+    : `${ids.length} selected job${ids.length===1?'':'s'}`;
+
+  const ok=window.confirm(
+    `Delete ${label} from the Clipping jobs list?\n\nRendered clips and anything already published will stay intact.`
+  );
+  if(!ok) return;
+
+  const btn=$('delete-selected-jobs');
+  const original=btn?.textContent||'Delete selected';
+  if(btn){btn.disabled=true;btn.textContent='Deleting…';}
+
+  try{
+    const result=await api('/api/clipper/jobs/action',{
+      method:'POST',
+      body:{action:'delete',source_ids:ids}
+    });
+
+    const failed=new Set((result.results||[]).filter(item=>!item.ok).map(item=>String(item.source_id)));
+    state.selectedJobs=new Set([...failed]);
+    await refreshJobs();
+
+    if(failed.size){
+      alert(`${ids.length-failed.size} job(s) deleted. ${failed.size} could not be deleted.`);
+    }
+  }catch(error){
+    alert(error.message||'Could not delete clipping jobs.');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=original;}
+    updateJobSelectionBar((state.jobs?.jobs||[]).slice(0,8));
+  }
+}
+
 function renderJobs(){
   const all=state.jobs?.jobs||[];
+  const existingIds=new Set(all.map(job=>String(job.source_id)));
+  for(const id of [...state.selectedJobs]) if(!existingIds.has(String(id))) state.selectedJobs.delete(id);
+
   const active=all.filter(j=>!['complete','failed'].includes(j.stage));
   const failures=all.filter(j=>j.error||j.stage==='failed');
   const rows=active.length||failures.length?[...failures,...active.filter(j=>!failures.includes(j))].slice(0,8):all.slice(0,6);
@@ -849,11 +913,13 @@ function renderJobs(){
     const campaign=campaignGroupForMemberId(job.campaign_id);
     const variants=job.variants||{};
     const stageClass=job.error?'failed':job.stage==='complete'?'complete':job.stage==='rendering'?'rendering':job.waiting?'waiting':'active';
+    const selected=state.selectedJobs.has(String(job.source_id));
 
     return `
-      <div class="job-card ${stageClass}">
+      <div class="job-card ${stageClass} ${selected?'selected':''}">
         <div class="job-card-head">
           <div class="job-title-wrap">
+            <input class="job-select-checkbox" type="checkbox" data-source-id="${esc(job.source_id)}" ${selected?'checked':''} aria-label="Select clipping job">
             <span class="job-pulse"></span>
             <div>
               <strong>${esc(job.title||'Clipper job')}</strong>
@@ -885,6 +951,39 @@ function renderJobs(){
       </div>
     `;
   }).join(''):'<div class="empty-row">No Clipper jobs found yet. Create a campaign to submit a source.</div>';
+
+  document.querySelectorAll('.job-select-checkbox').forEach(input=>{
+    input.onchange=()=>{
+      const id=String(input.dataset.sourceId||'');
+      if(!id) return;
+      if(input.checked) state.selectedJobs.add(id);
+      else state.selectedJobs.delete(id);
+      renderJobs();
+    };
+  });
+
+  const selectAll=$('select-visible-jobs');
+  if(selectAll){
+    selectAll.onchange=()=>{
+      for(const job of rows){
+        const id=String(job.source_id);
+        if(selectAll.checked) state.selectedJobs.add(id);
+        else state.selectedJobs.delete(id);
+      }
+      renderJobs();
+    };
+  }
+
+  const clear=$('clear-job-selection');
+  if(clear) clear.onclick=()=>{
+    state.selectedJobs.clear();
+    renderJobs();
+  };
+
+  const del=$('delete-selected-jobs');
+  if(del) del.onclick=deleteSelectedClipperJobs;
+
+  updateJobSelectionBar(rows);
 }
 
 function renderPresetLibrary(){
