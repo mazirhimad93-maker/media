@@ -88,7 +88,23 @@ export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fe
   await db(scopedPath(`social_contacts?id=eq.${encodeURIComponent(contact.id)}&lead_status=eq.new`,job.workspace_id),{
     method:'PATCH',body:{lead_status:'engaged',updated_at:now}
   }).catch(console.error);
-  await db('growth_events',{method:'POST',body:{event_type:'social_reply_sent',occurred_at:now,platform:account.platform,source:'manual_social_inbox',account_id:account.id,social_contact_id:contact.id,social_conversation_id:job.conversation_id,metadata:{outbox_id:job.id,reply_mode:job.reply_mode}}}).catch(()=>{});
+  const replySource=job.metadata?.automated===true?'comment_automation':'manual_social_inbox';
+  await db('growth_events',{method:'POST',body:{
+    event_type:'social_reply_sent',
+    occurred_at:now,
+    platform:account.platform,
+    source:replySource,
+    account_id:account.id,
+    social_contact_id:contact.id,
+    social_conversation_id:job.conversation_id,
+    metadata:{
+      outbox_id:job.id,
+      reply_mode:job.reply_mode,
+      automation_id:job.metadata?.automation_id||null,
+      keyword:job.metadata?.keyword||null
+    },
+    ...(job.workspace_id?{workspace_id:job.workspace_id}:{})
+  }}).catch(()=>{});
   return {id:job.id,status:'sent',sent:true,platform_message_id:sent.messageId};
 }
 
