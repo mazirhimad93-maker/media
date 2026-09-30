@@ -24,6 +24,7 @@ function withinPrivateReplyWindow(raw){
 export async function runCommentAutomation({account,contact,conversation,commentId,text,raw={}},db=supabaseRequest){
   if(!account?.workspace_id||!commentId||!contact||!conversation) return {matched:false,reason:'missing_context'};
   if(account.platform!=='instagram_reels') return {matched:false,reason:'platform_not_enabled'};
+  if(raw?.parent_id) return {matched:false,reason:'nested_comment'};
   if(!withinPrivateReplyWindow(raw)) return {matched:false,reason:'private_reply_window_expired'};
 
   const rules=await db(scopedPath(
