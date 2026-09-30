@@ -173,6 +173,14 @@
             </div>
             <span id="jobs-last-refresh" class="small-badge">Connecting…</span>
           </summary>
+          <div id="clip-jobs-toolbar" class="job-bulk-toolbar" hidden>
+            <label class="job-select-all"><input id="select-visible-jobs" type="checkbox"> <span>Select visible jobs</span></label>
+            <div class="job-bulk-actions">
+              <span id="selected-jobs-count">0 selected</span>
+              <button id="clear-job-selection" class="secondary-btn" type="button">Clear</button>
+              <button id="delete-selected-jobs" class="danger-btn" type="button">Delete selected</button>
+            </div>
+          </div>
           <div id="clipper-jobs-list" class="job-list"></div>
         </details>
 
