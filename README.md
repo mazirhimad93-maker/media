@@ -122,6 +122,22 @@ sql/001_social_hub.sql
 
 Do **not** run it on the email Outreach project.
 
+Then apply the comment automation migration:
+
+```text
+sql/002_comment_automation_and_daily_metrics.sql
+```
+
+This creates idempotent keyword automations and seeds an active **TRAINING → private DM** rule for each currently connected Instagram account. The default reply is:
+
+```text
+Hey! Saw you commented TRAINING — I’ve got you. I’ll send it over here.
+```
+
+The Meta webhook sends a matching private reply immediately through the existing Social Hub outbox/delivery path. Duplicate webhook deliveries cannot send the same comment twice.
+
+Metrics are deliberately delayed: the platform metrics worker does not call Instagram, YouTube, or Facebook during the first 24 hours after a post is published, and after the first snapshot it waits another 24 hours before the next platform query. The hourly Netlify scheduler only checks which posts are due; it does not query the platform for posts that are still inside the 24-hour quiet window.
+
 Then run the read-only checks in:
 
 ```text
