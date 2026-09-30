@@ -18,6 +18,49 @@ export default async (request) => {
     );
     const c=rows?.[0];
     if(!c) throw Object.assign(new Error('Conversation not found'),{status:404});
+
+    const inboundMessages=await supabaseRequest(scopedPath(
+      'social_messages?conversation_id=eq.'+encodeURIComponent(conversationId)+
+      '&direction=eq.inbound&select=id,message_type,platform_message_id,sent_at,created_at&order=sent_at.desc&limit=100',
+      workspaceId
+    )).catch(()=>[]);
+    const hasInboundDm=(inboundMessages||[]).some(message=>message.message_type!=='comment');
+    const inboundComments=(inboundMessages||[]).filter(message=>message.message_type==='comment'&&message.platform_message_id);
+
+    const priorPrivateReplies=await supabaseRequest(scopedPath(
+      'social_outbox?conversation_id=eq.'+encodeURIComponent(conversationId)+
+      '&reply_mode=eq.private_reply&select=id,target_platform_id,status,platform_message_id,last_error,queued_at&order=queued_at.desc&limit=100',
+      workspaceId
+    )).catch(()=>[]);
+
+    let replyMode=String(input.replyMode||'').trim();
+    let targetPlatformId=input.targetPlatformId||null;
+
+    // A public comment does not open the ordinary Instagram DM window.
+    // Before the commenter has replied in Direct, the only valid first
+    // outbound message is a private reply anchored to an unused comment ID.
+    if(!replyMode && c.platform==='instagram_reels' && !hasInboundDm){
+      const reserved=new Set((priorPrivateReplies||[])
+        .filter(item=>['pending','sending','sent'].includes(item.status))
+        .map(item=>String(item.target_platform_id||''))
+        .filter(Boolean));
+      const available=inboundComments.find(message=>!reserved.has(String(message.platform_message_id)));
+
+      if(available){
+        if(attachment){
+          throw Object.assign(new Error('Instagram requires the first comment-to-DM private reply to be text. Send a text first; attachments unlock after the person replies.'),{status:409});
+        }
+        replyMode='private_reply';
+        targetPlatformId=available.platform_message_id;
+      }else{
+        const sent=(priorPrivateReplies||[]).some(item=>['pending','sending','sent'].includes(item.status));
+        if(sent){
+          throw Object.assign(new Error('Private reply sent. Waiting for this lead to answer on Instagram before another DM can be sent.'),{status:409});
+        }
+      }
+    }
+
+    if(!replyMode) replyMode='dm';
     const accounts=await supabaseRequest(scopedPath(
       'content_accounts?id=eq.'+encodeURIComponent(c.account_id)+'&select=id,access_token,metadata&limit=1',workspaceId
     ));
@@ -44,11 +87,16 @@ export default async (request) => {
         conversation_id:c.id,
         account_id:c.account_id,
         contact_id:c.contact_id,
-        reply_mode:input.replyMode||'dm',
-        target_platform_id:input.targetPlatformId||null,
+        reply_mode:replyMode,
+        target_platform_id:targetPlatformId,
         body:body||`[${media.type==='audio'?'Voice message':media.name}]`,
         status:'pending',
-        metadata:{manual:true,created_from:'alchemic_media',...(media?{attachment:media}:{})},
+        metadata:{
+          manual:true,
+          created_from:'alchemic_media',
+          ...(replyMode==='private_reply'?{comment_private_reply:true}:{}),
+          ...(media?{attachment:media}:{})
+        },
         ...(workspaceId?{workspace_id:workspaceId}:{})
       }
     });
