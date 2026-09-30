@@ -1,5 +1,6 @@
 import { jsonResponse, scopedPath, supabaseRequest, verifyMetaSignature } from './_shared.mjs';
 import { addUnreadMessages } from './_social-unread.mjs';
+import { runCommentAutomation } from './_comment-automation.mjs';
 
 const textResponse=(body,status=200)=>new Response(String(body),{status,headers:{'content-type':'text/plain; charset=utf-8'}});
 
@@ -300,6 +301,7 @@ async function processComment(entry,change){
     metadata:{webhook_source:'comments'}
   });
 
+  const commentText=value.text||value.message||null;
   await insertMessage({
     conversation,
     account,
@@ -307,11 +309,15 @@ async function processComment(entry,change){
     platformMessageId:commentId,
     direction:'inbound',
     type:'comment',
-    body:value.text||value.message||null,
+    body:commentText,
     raw:value
   });
 
-  return {processed:true,type:'comment',commentId};
+  const automation=await runCommentAutomation({
+    account,contact,conversation,commentId,text:commentText,raw:value
+  }).catch(error=>({matched:false,error:error.message}));
+
+  return {processed:true,type:'comment',commentId,automation};
 }
 
 export default async (request)=>{
