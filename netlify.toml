@@ -73,6 +73,10 @@
   to = "/.netlify/functions/clipper-jobs"
   status = 200
 [[redirects]]
+  from = "/api/clipper/jobs/action"
+  to = "/.netlify/functions/clipper-job-action"
+  status = 200
+[[redirects]]
   from = "/api/clipper/presets"
   to = "/.netlify/functions/clipper-presets"
   status = 200
