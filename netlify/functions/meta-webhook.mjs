@@ -282,6 +282,7 @@ async function processComment(entry,change){
   const from=value.from||{};
   const contactId=from.id||value.user_id;
   if(!contactId) return {ignored:'no_commenter_id'};
+  if(String(contactId)===String(account.platform_account_id)) return {ignored:'own_comment'};
 
   const contact=await upsertContact({
     account,
