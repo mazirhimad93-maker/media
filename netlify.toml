@@ -9,7 +9,7 @@
   schedule = "0 3 * * *"
 
 [functions."metrics-scheduled"]
-  schedule = "0 * * * *"
+  schedule = "*/15 * * * *"
 
 [[redirects]]
   from = "/api/auth/login"
@@ -132,6 +132,11 @@
   from = "/api/social/outbox/send"
   to = "/.netlify/functions/social-outbox-send"
   status = 200
+[[redirects]]
+  from = "/api/comment-automations"
+  to = "/.netlify/functions/comment-automations"
+  status = 200
+
 [[redirects]]
   from = "/api/metrics/sync"
   to = "/.netlify/functions/metrics-sync"
