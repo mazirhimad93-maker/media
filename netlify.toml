@@ -65,6 +65,10 @@
   to = "/.netlify/functions/dashboard"
   status = 200
 [[redirects]]
+  from = "/api/demo/bootstrap"
+  to = "/.netlify/functions/demo-bootstrap"
+  status = 200
+[[redirects]]
   from = "/api/campaigns"
   to = "/.netlify/functions/campaigns"
   status = 200
