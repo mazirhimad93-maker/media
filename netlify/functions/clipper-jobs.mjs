@@ -148,7 +148,8 @@ export default async (request) => {
     }
 
     const campaignById=new Map((campaigns||[]).map(c=>[c.id,c]));
-    const jobs=(sources||[]).map(s=>{
+    const visibleSources=(sources||[]).filter(source=>obj(source.metadata)?.hidden_from_clipper!==true);
+    const jobs=visibleSources.map(s=>{
       const job=jobFrom(s,variantsBySource.get(s.id)||[],renderMedian);
       const campaign=campaignById.get(s.campaign_id)||null;
       return {
