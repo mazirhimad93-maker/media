@@ -465,7 +465,7 @@ export async function ensureWorkspaceForProfile(user, profile) {
 
     if (workspaceId) {
       const rows = await supabaseRequest(
-        `media_workspaces?id=eq.${encodeURIComponent(workspaceId)}&status=eq.active&select=id,name,slug,owner_user_id,status,is_demo,demo_note,created_at&limit=1`
+        `media_workspaces?id=eq.${encodeURIComponent(workspaceId)}&status=eq.active&select=id,name,slug,owner_user_id,status,created_at&limit=1`
       ).catch(() => []);
       if (rows?.[0]) {
         return {
@@ -482,7 +482,7 @@ export async function ensureWorkspaceForProfile(user, profile) {
     if (memberships?.[0]) {
       workspaceId = memberships[0].workspace_id;
       const rows = await supabaseRequest(
-        `media_workspaces?id=eq.${encodeURIComponent(workspaceId)}&status=eq.active&select=id,name,slug,owner_user_id,status,is_demo,demo_note,created_at&limit=1`
+        `media_workspaces?id=eq.${encodeURIComponent(workspaceId)}&status=eq.active&select=id,name,slug,owner_user_id,status,created_at&limit=1`
       ).catch(() => []);
       if (rows?.[0]) {
         await supabaseRequest(
@@ -558,16 +558,6 @@ export async function requireWorkspace(request, allowedRoles = null) {
       error.status = 409;
       throw error;
     }
-  }
-
-  const method=String(request.method||'GET').toUpperCase();
-  const adminToken=request.headers.get('x-connector-admin-token')||request.headers.get('x-social-hub-token')||'';
-  const adminBypass=Boolean(process.env.CONNECTOR_ADMIN_TOKEN)&&safeEqual(adminToken,process.env.CONNECTOR_ADMIN_TOKEN);
-
-  if(context.workspace?.is_demo===true && !['GET','HEAD','OPTIONS'].includes(method) && !adminBypass){
-    const error=new Error('This sample workspace is read-only. Use your own workspace to make changes.');
-    error.status=403;
-    throw error;
   }
 
   return {
