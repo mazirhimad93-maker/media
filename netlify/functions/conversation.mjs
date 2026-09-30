@@ -29,15 +29,26 @@ export default async (request) => {
     }
     if(request.method!=='GET') throw Object.assign(new Error('GET or POST required'),{status:405});
 
-    const [conversation,messages,outbox]=await Promise.all([
+    const [conversation,messages,outbox,commentAutomationEvents]=await Promise.all([
       supabaseRequest('v_social_inbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=*&limit=1'),
       supabaseRequest(scopedPath('social_messages?conversation_id=eq.'+encodeURIComponent(id)+'&select=*&order=sent_at.asc&limit=500',workspaceId)),
       supabaseRequest(scopedPath('social_outbox?conversation_id=eq.'+encodeURIComponent(id)+'&select=id,body,status,reply_mode,target_platform_id,platform_message_id,last_error,queued_at,sent_at,metadata&order=queued_at.asc&limit=100',workspaceId)),
+      supabaseRequest(scopedPath(
+        'social_comment_automation_events?conversation_id=eq.'+encodeURIComponent(id)+
+        '&select=id,automation_id,comment_id,comment_text,matched_keyword,status,error_message,outbox_id,platform_message_id,created_at,sent_at,updated_at'+
+        '&order=created_at.desc&limit=25',
+        workspaceId
+      )).catch(()=>[]),
     ]);
 
     if(!conversation?.[0]) throw Object.assign(new Error('Conversation not found'),{status:404});
 
-    return jsonResponse({conversation:conversation[0],messages:messages||[],outbox:outbox||[]});
+    return jsonResponse({
+      conversation:conversation[0],
+      messages:messages||[],
+      outbox:outbox||[],
+      comment_automation_events:commentAutomationEvents||[]
+    });
   } catch(error){
     return publicError(error,error.status||500);
   }
