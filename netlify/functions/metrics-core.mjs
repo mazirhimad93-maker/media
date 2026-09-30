@@ -335,12 +335,10 @@ async function facebookMetrics(post,account){
   return out;
 }
 
-function refreshAfterMinutes(post){
-  const publishedAt=new Date(post.finished_at||post.created_at||Date.now()).getTime();
-  const ageHours=Math.max(0,(Date.now()-publishedAt)/3600000);
-  if(ageHours<48) return 15;
-  if(ageHours<24*7) return 60;
-  if(ageHours<24*30) return 360;
+function refreshAfterMinutes(){
+  // Platform metrics are intentionally sampled once per 24 hours.
+  // The scheduled worker may wake up more often, but it will not call
+  // Instagram/YouTube/Facebook until this per-post interval has elapsed.
   return 1440;
 }
 
@@ -397,10 +395,35 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     }
 
     const latest=latestByHistory.get(h.id);
+    const publishedAt=new Date(post.finished_at||post.created_at||Date.now()).getTime();
+    const postAgeMinutes=Math.max(0,(Date.now()-publishedAt)/60000);
+
+    // Never touch a platform's metrics endpoint during the first 24 hours
+    // after publishing unless an operator explicitly uses force=true.
+    if(!force && !latest?.captured_at && postAgeMinutes<1440){
+      results.push({
+        queue_id:post.id,
+        history_id:h.id,
+        platform:account.platform,
+        status:'fresh',
+        reason:'waiting_first_24h',
+        eligible_at:new Date(publishedAt+1440*60000).toISOString()
+      });
+      continue;
+    }
+
     if(!force&&latest?.captured_at){
       const minutesOld=(Date.now()-new Date(latest.captured_at).getTime())/60000;
       if(minutesOld<refreshAfterMinutes(post)){
-        results.push({queue_id:post.id,history_id:h.id,platform:account.platform,status:'fresh',captured_at:latest.captured_at});
+        results.push({
+          queue_id:post.id,
+          history_id:h.id,
+          platform:account.platform,
+          status:'fresh',
+          reason:'waiting_next_24h',
+          captured_at:latest.captured_at,
+          eligible_at:new Date(new Date(latest.captured_at).getTime()+1440*60000).toISOString()
+        });
         continue;
       }
     }
