@@ -1,5 +1,6 @@
 import { jsonResponse, scopedPath, supabaseRequest, verifyMetaSignature } from './_shared.mjs';
 import { addUnreadMessages } from './_social-unread.mjs';
+import { dispatchSocialOutboxItem } from './_social-delivery.mjs';
 
 const textResponse=(body,status=200)=>new Response(String(body),{status,headers:{'content-type':'text/plain; charset=utf-8'}});
 
@@ -273,6 +274,155 @@ export async function applyReadReceipt(account, event, db = supabaseRequest) {
   return { processed: true, type: 'read', count: ids.length };
 }
 
+async function matchingCommentAutomation(account,commentText){
+  const text=String(commentText||'').trim().toLowerCase();
+  if(!text) return null;
+
+  const rows=await supabaseRequest(
+    scopedPath(
+      'social_comment_automations?is_active=eq.true'+
+      '&or=(account_id.is.null,account_id.eq.'+encodeURIComponent(account.id)+')'+
+      '&select=*&order=created_at.asc',
+      account.workspace_id
+    )
+  ).catch(()=>[]);
+
+  // Prefer an account-specific rule over a workspace-wide fallback.
+  const ordered=[...(rows||[])].sort((a,b)=>Number(Boolean(b.account_id))-Number(Boolean(a.account_id)));
+  return ordered.find(rule=>{
+    const keyword=String(rule.keyword||'').trim().toLowerCase();
+    if(!keyword) return false;
+    return rule.match_type==='exact' ? text===keyword : text.includes(keyword);
+  })||null;
+}
+
+async function runCommentAutomation({account,contact,conversation,commentId,mediaId,commentText}){
+  if(!commentId||!contact||!conversation) return {automation:'skipped',reason:'missing_context'};
+  if(String(contact.platform_user_id||'')===String(account.platform_account_id||'')){
+    return {automation:'skipped',reason:'own_comment'};
+  }
+
+  const existing=await supabaseRequest(
+    scopedPath(
+      'social_comment_automation_events?account_id=eq.'+encodeURIComponent(account.id)+
+      '&comment_id=eq.'+encodeURIComponent(String(commentId))+
+      '&select=id,status,outbox_id&limit=1',
+      account.workspace_id
+    )
+  ).catch(()=>[]);
+  if(existing?.[0]) return {automation:'duplicate',event:existing[0]};
+
+  const rule=await matchingCommentAutomation(account,commentText);
+  if(!rule) return {automation:'no_match'};
+
+  // Insert the idempotency record first. If Meta retries the webhook while the
+  // reply is being sent, the unique(account_id, comment_id) index blocks a
+  // second private message.
+  let event;
+  try{
+    event=(await supabaseRequest('social_comment_automation_events',{
+      method:'POST',
+      headers:{Prefer:'return=representation'},
+      body:{
+        workspace_id:account.workspace_id||null,
+        automation_id:rule.id,
+        account_id:account.id,
+        conversation_id:conversation.id,
+        contact_id:contact.id,
+        comment_id:String(commentId),
+        media_id:mediaId?String(mediaId):null,
+        comment_text:String(commentText||''),
+        matched_keyword:rule.keyword,
+        status:'matched',
+        metadata:{match_type:rule.match_type}
+      }
+    }))?.[0];
+  }catch(error){
+    // A concurrent delivery may already have claimed this comment.
+    const duplicate=await supabaseRequest(
+      scopedPath(
+        'social_comment_automation_events?account_id=eq.'+encodeURIComponent(account.id)+
+        '&comment_id=eq.'+encodeURIComponent(String(commentId))+
+        '&select=id,status,outbox_id&limit=1',
+        account.workspace_id
+      )
+    ).catch(()=>[]);
+    if(duplicate?.[0]) return {automation:'duplicate',event:duplicate[0]};
+    throw error;
+  }
+
+  const outbox=(await supabaseRequest('social_outbox',{
+    method:'POST',
+    headers:{Prefer:'return=representation'},
+    body:{
+      conversation_id:conversation.id,
+      account_id:account.id,
+      contact_id:contact.id,
+      reply_mode:'private_reply',
+      target_platform_id:String(commentId),
+      body:rule.dm_message,
+      status:'pending',
+      metadata:{
+        automated:true,
+        created_from:'comment_automation',
+        automation_id:rule.id,
+        automation_event_id:event?.id||null,
+        keyword:rule.keyword,
+        source_media_id:mediaId||null
+      },
+      ...(account.workspace_id?{workspace_id:account.workspace_id}:{})
+    }
+  }))?.[0];
+
+  if(!outbox?.id){
+    if(event?.id) await supabaseRequest(
+      scopedPath('social_comment_automation_events?id=eq.'+encodeURIComponent(event.id),account.workspace_id),
+      {method:'PATCH',body:{status:'failed',error_message:'Outbox insert failed',updated_at:new Date().toISOString()}}
+    ).catch(()=>{});
+    return {automation:'failed',reason:'outbox_insert_failed'};
+  }
+
+  if(event?.id) await supabaseRequest(
+    scopedPath('social_comment_automation_events?id=eq.'+encodeURIComponent(event.id),account.workspace_id),
+    {method:'PATCH',body:{status:'sending',outbox_id:outbox.id,updated_at:new Date().toISOString()}}
+  ).catch(()=>{});
+
+  const delivery=await dispatchSocialOutboxItem(outbox.id,account.workspace_id).catch(error=>({
+    sent:false,status:'failed',error:error.message
+  }));
+
+  if(event?.id){
+    await supabaseRequest(
+      scopedPath('social_comment_automation_events?id=eq.'+encodeURIComponent(event.id),account.workspace_id),
+      {
+        method:'PATCH',
+        body:delivery.sent===true
+          ? {
+              status:'sent',
+              platform_message_id:delivery.platform_message_id||null,
+              sent_at:new Date().toISOString(),
+              error_message:null,
+              updated_at:new Date().toISOString()
+            }
+          : {
+              status:'failed',
+              error_message:String(delivery.error||'Private reply failed').slice(0,1000),
+              updated_at:new Date().toISOString()
+            }
+      }
+    ).catch(()=>{});
+  }
+
+  return {
+    automation:delivery.sent===true?'sent':'failed',
+    automation_id:rule.id,
+    keyword:rule.keyword,
+    outbox_id:outbox.id,
+    platform_message_id:delivery.platform_message_id||null,
+    error:delivery.error||null
+  };
+}
+
 async function processComment(entry,change){
   const value=change.value||{};
   const account=await accountFor(String(entry.id||''));
@@ -292,6 +442,7 @@ async function processComment(entry,change){
 
   const mediaId=value.media?.id||value.media_id||null;
   const commentId=value.id||value.comment_id||null;
+  const commentText=value.text||value.message||null;
   const conversation=await upsertConversation({
     account,
     contact,
@@ -307,11 +458,20 @@ async function processComment(entry,change){
     platformMessageId:commentId,
     direction:'inbound',
     type:'comment',
-    body:value.text||value.message||null,
+    body:commentText,
     raw:value
   });
 
-  return {processed:true,type:'comment',commentId};
+  const automation=await runCommentAutomation({
+    account,
+    contact,
+    conversation,
+    commentId,
+    mediaId,
+    commentText
+  });
+
+  return {processed:true,type:'comment',commentId,...automation};
 }
 
 export default async (request)=>{
