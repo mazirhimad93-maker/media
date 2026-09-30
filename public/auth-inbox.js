@@ -466,8 +466,59 @@ function messageFallback(m) {
   return labels[m.message_type || m.metadata?.attachment?.type] || 'Attachment';
 }
 
+function conversationSendState(result = media.state.inbox.conversation || {}) {
+  const messages=result.messages||[];
+  const outbox=result.outbox||[];
+  const hasInboundDm=messages.some(m=>m.direction==='inbound'&&m.message_type!=='comment');
+  const comments=messages
+    .filter(m=>m.direction==='inbound'&&m.message_type==='comment'&&m.platform_message_id)
+    .sort((a,b)=>new Date(b.sent_at||b.created_at||0)-new Date(a.sent_at||a.created_at||0));
+  const reserved=new Set(outbox
+    .filter(item=>item.reply_mode==='private_reply'&&['pending','sending','sent'].includes(item.status))
+    .map(item=>String(item.target_platform_id||''))
+    .filter(Boolean));
+  const availableComment=comments.find(m=>!reserved.has(String(m.platform_message_id)));
+  const hasPrivateReply=outbox.some(item=>item.reply_mode==='private_reply'&&['pending','sending','sent'].includes(item.status));
+
+  if(hasInboundDm) return {mode:'dm',label:'DM window open · send normally',locked:false,privateReply:false};
+  if(availableComment) return {
+    mode:'private_reply',
+    label:'Comment lead · your first text will be sent as Instagram’s private reply. After they answer, normal DMs unlock.',
+    locked:false,
+    privateReply:true
+  };
+  if(hasPrivateReply) return {
+    mode:'waiting',
+    label:'Private reply sent · waiting for this person to answer on Instagram before another DM can be sent.',
+    locked:true,
+    privateReply:false
+  };
+  return {mode:'dm',label:'Sent through your connected channel',locked:false,privateReply:false};
+}
+
+function updateComposerState(result = media.state.inbox.conversation || {}) {
+  const state=conversationSendState(result);
+  const note=$('conversation-mode-note');
+  const input=$('conversation-reply-body');
+  const submit=$('conversation-reply-submit');
+  const file=$('composer-file-button');
+  const record=$('composer-record-button');
+
+  if(note) note.textContent=state.label;
+  if(input){
+    input.disabled=state.locked;
+    input.placeholder=state.locked?'Waiting for their Instagram reply…':state.privateReply?'Private reply to comment…':'Message…';
+  }
+  if(submit) submit.disabled=state.locked;
+  if(file) file.disabled=state.locked||state.privateReply;
+  if(record) record.disabled=state.locked||state.privateReply;
+
+  return state;
+}
+
 function renderConversation(forceScroll = false) {
   const result = media.state.inbox.conversation || {};
+  updateComposerState(result);
   const deliveredIds = new Set((result.messages || []).filter((m) => m.direction === 'outbound' && m.platform_message_id).map((m) => m.platform_message_id));
   const outbox = (result.outbox || []).filter((m) => m.status !== 'sent' || !m.platform_message_id || !deliveredIds.has(m.platform_message_id));
   const remoteIds = new Set((result.outbox || []).map((m) => m.id));
@@ -517,6 +568,7 @@ async function refreshConversation() {
       if (media.state.inbox.selected?.id !== id || media.state.view !== 'inbox' || !document.querySelector('.inbox-layout')?.classList.contains('show-thread')) return;
       media.state.inbox.conversation = result;
       $('conversation-lead-status').value = result.conversation?.lead_status || 'new';
+      updateComposerState(result);
       renderConversation();
       const unreadCount = Number(result.conversation?.unread_count || 0);
       if (unreadCount > 0 && result.conversation?.last_inbound_at) {
@@ -611,6 +663,15 @@ async function sendReply(event) {
   if (!selected || selected.source !== 'social') return;
   const body = $('conversation-reply-body').value.trim();
   const attachment = pendingAttachment;
+  const sendState=conversationSendState();
+  if(sendState.locked){
+    $('composer-error').textContent='Waiting for this lead to answer the private reply on Instagram before another DM can be sent.';
+    return;
+  }
+  if(sendState.privateReply&&attachment){
+    $('composer-error').textContent='The first comment-to-DM reply must be text. Send text first; attachments unlock after they reply.';
+    return;
+  }
   if (!body && !attachment) return;
   const button = $('conversation-reply-submit');
   if (button.disabled) return;
