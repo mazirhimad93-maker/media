@@ -224,7 +224,7 @@ export default async request=>{
 
       variants.push({
         id:variantId,workspace_id:workspace.id,campaign_id:distCampaignId,source_id:sourceId,
-        variant_key:'demo-v'+(i+1),title:spec.title,hook:spec.hook,
+        variant_key:'demo-'+workspace.id.slice(0,6)+'-v'+(i+1),title:spec.title,hook:spec.hook,
         caption:spec.hook+'\n\nComment SYSTEM and we will send the breakdown.',
         render_url:sampleUrl,duration_seconds:32+(i%5)*6,
         creative_spec:{demo:true,start_seconds:i*12,end_seconds:i*12+45,cta:'Comment SYSTEM'},
