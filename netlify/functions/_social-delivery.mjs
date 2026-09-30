@@ -21,8 +21,23 @@ async function sendInstagram(account, contact, job, fetcher){
   }
   const response=await fetcher(endpoint,{method:'POST',headers:{authorization:`Bearer ${account.access_token}`,'content-type':'application/json'},body:JSON.stringify({recipient,message:outgoingMessage(job)})});
   const data=await response.json().catch(()=>({}));
-  if(!response.ok||data?.error) throw new Error(data?.error?.message||`Instagram send failed (${response.status})`);
-  return {messageId:data.message_id||null,raw:data};
+  if(!response.ok||data?.error){
+    const meta=data?.error||{};
+    const details=[
+      meta.message||`Instagram send failed (${response.status})`,
+      meta.code!==undefined?`code ${meta.code}`:null,
+      meta.error_subcode!==undefined?`subcode ${meta.error_subcode}`:null,
+      meta.type||null
+    ].filter(Boolean);
+    const error=new Error(details.join(' · '));
+    error.meta=meta;
+    throw error;
+  }
+  return {
+    messageId:data.message_id||null,
+    recipientId:data.recipient_id||null,
+    raw:data
+  };
 }
 
 async function sendFacebook(account, contact, job, fetcher){
@@ -77,6 +92,25 @@ export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fe
     return {id:job.id,status:'sending',sent:true,error:'Meta accepted the reply, but its delivery record could not be updated. Do not resend it yet.'};
   }
   try{
+    // Meta returns the Instagram-scoped recipient ID for a successful private
+    // reply. Keep it on the contact so the lead's eventual DM webhook resolves
+    // back to the same conversation even if the comment webhook used a
+    // different identifier representation.
+    if(job.reply_mode==='private_reply'&&sent.recipientId&&String(sent.recipientId)!==String(contact.platform_user_id||'')){
+      await db(scopedPath(`social_contacts?id=eq.${encodeURIComponent(contact.id)}`,job.workspace_id),{
+        method:'PATCH',
+        body:{
+          platform_user_id:String(sent.recipientId),
+          metadata:{
+            private_reply_recipient_id:String(sent.recipientId),
+            comment_platform_user_id:contact.platform_user_id||null
+          },
+          updated_at:now
+        }
+      }).catch(()=>{});
+      contact.platform_user_id=String(sent.recipientId);
+    }
+
     const existing=sent.messageId
       ? await db(`social_messages?account_id=eq.${encodeURIComponent(account.id)}&platform_message_id=eq.${encodeURIComponent(sent.messageId)}&select=id&limit=1`)
       : [];
