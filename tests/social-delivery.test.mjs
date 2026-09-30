@@ -80,3 +80,25 @@ test('an audio reply sends a Meta attachment and records playback media',async()
   assert.equal(stored.message_type,'audio');
   assert.equal(stored.media_url,audioJob.metadata.attachment.url);
 });
+
+
+test('private comment reply uses the comment ID as the Instagram recipient',async()=>{
+  const privateJob={...job,id:'outbox-private',reply_mode:'private_reply',target_platform_id:'comment-123',body:'Here is the training.'};
+  const base=fakeDatabase();
+  const db=async(path,options)=>{
+    if(path.startsWith('social_outbox?')&&!options) return [privateJob];
+    if(path.startsWith('social_outbox?')&&path.includes('status=eq.pending')) return [{...privateJob,status:'sending',attempts:1}];
+    return base.db(path,options);
+  };
+  let payload;
+  const result=await dispatchSocialOutboxItem('outbox-private','workspace-1',{
+    db,
+    fetcher:async(url,options)=>{
+      payload=JSON.parse(options.body);
+      return new Response(JSON.stringify({message_id:'private-1'}),{status:200});
+    }
+  });
+  assert.equal(result.sent,true);
+  assert.deepEqual(payload.recipient,{comment_id:'comment-123'});
+  assert.equal(payload.message.text,'Here is the training.');
+});
