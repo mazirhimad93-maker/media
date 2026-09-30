@@ -112,6 +112,11 @@
   from = "/api/social/reply"
   to = "/.netlify/functions/social-reply"
   status = 200
+
+[[redirects]]
+  from = "/api/social/comment-automations"
+  to = "/.netlify/functions/comment-automations"
+  status = 200
 [[redirects]]
   from = "/api/social/media/upload"
   to = "/.netlify/functions/social-media-upload"
