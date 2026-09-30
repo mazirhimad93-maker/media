@@ -399,8 +399,8 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     const postAgeMinutes=Math.max(0,(Date.now()-publishedAt)/60000);
 
     // Never touch a platform's metrics endpoint during the first 24 hours
-    // after publishing unless an operator explicitly uses force=true.
-    if(!force && !latest?.captured_at && postAgeMinutes<1440){
+    // after publishing. This quiet period is absolute, including manual Sync now.
+    if(!latest?.captured_at && postAgeMinutes<1440){
       results.push({
         queue_id:post.id,
         history_id:h.id,
