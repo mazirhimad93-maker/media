@@ -80,3 +80,28 @@ test('an audio reply sends a Meta attachment and records playback media',async()
   assert.equal(stored.message_type,'audio');
   assert.equal(stored.media_url,audioJob.metadata.attachment.url);
 });
+
+
+test('an Instagram private reply is addressed to the comment and bypasses the ordinary DM recipient',async()=>{
+  const privateJob={...job,id:'outbox-private',reply_mode:'private_reply',target_platform_id:'comment-123',body:'Reply YES and I’ll send it here.'};
+  const base=fakeDatabase();
+  const privateDb=async(path,options)=>{
+    base.calls.push({path,options});
+    if(path.startsWith('social_outbox?')&&!options) return [privateJob];
+    if(path.startsWith('social_outbox?')&&path.includes('status=eq.pending')) return [{...privateJob,status:'sending',attempts:1}];
+    if(path.startsWith('content_accounts?')) return [{id:'account-1',platform:'instagram_reels',platform_account_id:'ig-1',access_token:'test-token'}];
+    if(path.startsWith('social_contacts?')) return [{id:'contact-1',platform_user_id:'sender-1'}];
+    if(path.startsWith('social_messages?')) return [];
+    return null;
+  };
+  let payload;
+  const result=await dispatchSocialOutboxItem('outbox-private','workspace-1',{
+    db:privateDb,
+    fetcher:async(url,options)=>{
+      payload=JSON.parse(options.body);
+      return new Response(JSON.stringify({message_id:'private-1'}),{status:200});
+    }
+  });
+  assert.equal(result.sent,true);
+  assert.deepEqual(payload,{recipient:{comment_id:'comment-123'},message:{text:privateJob.body}});
+});
