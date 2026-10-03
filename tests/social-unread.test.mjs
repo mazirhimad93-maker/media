@@ -111,3 +111,19 @@ test('sync creates a New contact and counts only newly imported inbound DMs',asy
   const activity=calls.find(({path,options})=>path.startsWith('social_conversations?')&&options?.body?.last_inbound_at);
   assert.equal(activity.options.body.last_inbound_at,'2026-09-28T17:02:00Z');
 });
+
+test('a delayed webhook preserves the original timestamp instead of reopening an old DM',async()=>{
+  const calls=[];
+  const timestamp=Date.parse('2026-09-30T18:10:00Z');
+  const db=async(path,options)=>{
+    calls.push({path,options});
+    if(path==='social_messages') return [{id:'m1'}];
+    if(path.startsWith('social_conversations?')&&!options) return [{unread_count:0}];
+    if(path.includes('unread_count=eq.')) return [{id:'c1'}];
+    if(path.startsWith('growth_events?')) return [{id:'g1'}];
+    return [];
+  };
+  await insertMessage({conversation:{id:'c1'},account:{id:'a1',workspace_id:'w1'},contact:{id:'lead-1'},raw:{timestamp},body:'Heyy'},db);
+  assert.equal(calls.find(c=>c.path==='social_messages').options.body.sent_at,new Date(timestamp).toISOString());
+  assert.equal(calls.some(c=>c.options?.body?.lead_status),false);
+});

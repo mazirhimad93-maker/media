@@ -1,3 +1,4 @@
+import { eligibilityLabel } from './messaging-policy.js';
 const $ = (id) => document.getElementById(id);
 
 let media = null;
@@ -8,6 +9,7 @@ let localReplies = [];
 let pendingAttachment = null;
 let recordingSession = null;
 let recordingTimer = null;
+let replyBusy = false;
 const receiptUpgradeAttempted = new Set();
 
 function waitForMedia() {
@@ -229,6 +231,7 @@ function renderInboxThreads() {
     return '<button class="inbox-thread ' + (active ? 'active ' : '') + (row.unread ? 'unread' : '') + '" data-source="' + media.esc(row.source) + '" data-id="' + media.esc(row.id) + '" aria-label="' + media.esc(row.name + (row.unread ? `, ${row.unread} unread message${row.unread === 1 ? '' : 's'}` : '')) + '">' +
       '<div class="inbox-thread-top"><strong>' + media.esc(row.name) + '</strong><span>' + dateLabel(row.at) + '</span></div>' +
       '<div class="inbox-thread-meta">' + media.esc(row.meta) + '</div>' +
+      '<div class="thread-messaging-state">'+media.esc(eligibilityLabel(row.raw?.messaging_eligibility))+'</div>'+
       '<div class="inbox-thread-preview">' + media.esc(String(row.preview || '').slice(0, 130)) + '</div>' +
       (row.unread ? '<b class="thread-unread" aria-hidden="true">' + (row.unread > 1 ? row.unread : '') + '</b>' : '') +
       '</button>';
@@ -467,59 +470,12 @@ function messageFallback(m) {
 }
 
 function conversationSendState(result = media.state.inbox.conversation || {}) {
-  const messages=result.messages||[];
-  const outbox=result.outbox||[];
-  const automationEvents=result.comment_automation_events||[];
-  const latestAutomation=automationEvents[0]||null;
-  const hasInboundDm=messages.some(m=>m.direction==='inbound'&&m.message_type!=='comment');
-  const comments=messages
-    .filter(m=>m.direction==='inbound'&&m.message_type==='comment'&&m.platform_message_id)
-    .sort((a,b)=>new Date(b.sent_at||b.created_at||0)-new Date(a.sent_at||a.created_at||0));
-  const reserved=new Set(outbox
-    .filter(item=>item.reply_mode==='private_reply'&&['pending','sending','sent'].includes(item.status))
-    .map(item=>String(item.target_platform_id||''))
-    .filter(Boolean));
-  const availableComment=comments.find(m=>!reserved.has(String(m.platform_message_id)));
-  const hasPrivateReply=outbox.some(item=>item.reply_mode==='private_reply'&&['pending','sending','sent'].includes(item.status));
-
-  if(hasInboundDm) return {
-    mode:'dm',
-    label:'DM window open · send normally',
-    locked:false,
-    privateReply:false,
-    automation:latestAutomation
-  };
-  if(availableComment){
-    const failed=latestAutomation?.status==='failed'
-      ? `Auto private reply failed: ${latestAutomation.error_message||'Meta rejected the send'}. Send a text below to retry this comment as a private reply.`
-      : latestAutomation
-        ? `Comment automation status: ${latestAutomation.status}. You can send a text below as the private reply.`
-        : 'Comment lead detected · no private reply has been recorded yet. Your first text below will be sent as Instagram’s private reply.';
-    return {
-      mode:'private_reply',
-      label:failed,
-      locked:false,
-      privateReply:true,
-      automation:latestAutomation
-    };
-  }
-  if(hasPrivateReply) return {
-    mode:'waiting',
-    label:latestAutomation?.status==='sent'
-      ? 'Private reply accepted by Instagram · check the commenter’s Requests/Invitations folder. Waiting for their reply before another DM can be sent.'
-      : 'Private reply sent · waiting for this person to answer on Instagram before another DM can be sent.',
-    locked:true,
-    privateReply:false,
-    automation:latestAutomation
-  };
-  if(latestAutomation?.status==='failed') return {
-    mode:'blocked',
-    label:`Comment automation failed: ${latestAutomation.error_message||'unknown Meta error'}`,
-    locked:false,
-    privateReply:false,
-    automation:latestAutomation
-  };
-  return {mode:'dm',label:'Sent through your connected channel',locked:false,privateReply:false,automation:latestAutomation};
+  const eligibility=result.messaging_eligibility;
+  if(!eligibility) return {mode:'checking',label:'Checking messaging availability…',locked:true,privateReply:false};
+  const expired=eligibility.expires_at && Date.parse(eligibility.expires_at)<=Date.now();
+  const human=eligibility.state==='HUMAN_AGENT' && !expired && $('human-support-reply')?.checked;
+  return {mode:eligibility.reply_mode || 'waiting',label:eligibilityLabel(eligibility),
+    locked:(!eligibility.can_send && !human) || expired,privateReply:eligibility.reply_mode==='private_reply'};
 }
 
 function updateComposerState(result = media.state.inbox.conversation || {}) {
@@ -530,12 +486,24 @@ function updateComposerState(result = media.state.inbox.conversation || {}) {
   const file=$('composer-file-button');
   const record=$('composer-record-button');
 
-  if(note) note.textContent=state.label;
-  if(input){
-    input.disabled=state.locked;
-    input.placeholder=state.locked?'Waiting for their Instagram reply…':state.privateReply?'Private reply to comment…':'Message…';
+  if(note){note.textContent=state.label;note.dataset.state=result.messaging_eligibility?.state||'CHECKING';}
+  if($('human-support-option')) $('human-support-option').hidden=result.messaging_eligibility?.state!=='HUMAN_AGENT';
+  const link=$('conversation-native-link');
+  const username=result.conversation?.contact_username;
+  if(link){
+    const platform=result.conversation?.platform;
+    const tiktok=['tiktok','tiktok_video'].includes(platform);
+    const validName=username && /^[a-z0-9._]+$/i.test(username);
+    link.hidden=platform!=='instagram_reels'&&!tiktok;
+    link.href=tiktok?(validName?'https://www.tiktok.com/@'+encodeURIComponent(username):'https://www.tiktok.com/messages')
+      :(validName?'https://www.instagram.com/'+encodeURIComponent(username)+'/':'https://www.instagram.com/direct/inbox/');
+    link.textContent=(validName?'Open @'+username:'Open inbox')+' in '+(tiktok?'TikTok':'Instagram');
   }
-  if(submit) submit.disabled=state.locked;
+  if(input){
+    input.disabled=false;
+    input.placeholder=state.locked?'Draft a message for later…':state.privateReply?'Private reply to comment…':'Message…';
+  }
+  if(submit) submit.disabled=state.locked||replyBusy;
   if(file) file.disabled=state.locked||state.privateReply;
   if(record) record.disabled=state.locked||state.privateReply;
 
@@ -546,6 +514,7 @@ function renderConversation(forceScroll = false) {
   const result = media.state.inbox.conversation || {};
   updateComposerState(result);
   const deliveredIds = new Set((result.messages || []).filter((m) => m.direction === 'outbound' && m.platform_message_id).map((m) => m.platform_message_id));
+  const sendState=conversationSendState(result);
   const outbox = (result.outbox || []).filter((m) => m.status !== 'sent' || !m.platform_message_id || !deliveredIds.has(m.platform_message_id));
   const remoteIds = new Set((result.outbox || []).map((m) => m.id));
   localReplies = localReplies.filter((m) => !m.outboxId || !remoteIds.has(m.outboxId));
@@ -554,7 +523,7 @@ function renderConversation(forceScroll = false) {
     ...outbox.map((m) => ({ ...m, direction: 'outbound', _time: m.sent_at || m.queued_at, _kind: 'outbox' })),
     ...localReplies,
   ].sort((a, b) => new Date(a._time || 0) - new Date(b._time || 0));
-  const signature = JSON.stringify(messages.map((m) => [m.id, m.platform_message_id, m.status, m.delivery_status, m.last_error, m.media_url, m.body]));
+  const signature = sendState.locked + ':' + JSON.stringify(messages.map((m) => [m.id, m.platform_message_id, m.status, m.delivery_status, m.last_error, m.media_url, m.body]));
   if (signature === conversationSignature && !forceScroll) return;
   conversationSignature = signature;
   const box = $('conversation-messages');
@@ -575,9 +544,9 @@ function renderConversation(forceScroll = false) {
     const mark = status === 'Seen' ? '✓✓' : status === 'Sent' ? '✓' : status === 'Failed' ? '!' : '…';
     return `${divider}<div class="message-bubble ${outbound ? 'outbound' : 'inbound'} ${queued ? 'queued' : ''}">
       ${mediaMarkup}${text || (!mediaMarkup ? `<div class="message-text">${messageFallback(m)}</div>` : '')}
-      <small class="message-meta"><time title="${media.esc(m._time ? new Date(m._time).toLocaleString() : '')}">${media.esc(shortTime(m._time))}</time>${outbound ? `<span class="message-check" title="${status}" aria-label="${status}">${mark}</span>` : ''}</small>
+      <small class="message-meta"><time title="${media.esc(m._time ? new Date(m._time).toLocaleString() : '')}">${media.esc(shortTime(m._time))}</time>${outbound ? `<span class="message-check" title="${status}" aria-label="${status}">${status === 'Failed' ? 'Failed · Not delivered' : mark}</span>` : ''}</small>
       ${m.last_error ? `<small class="delivery-error">Delivery error: ${media.esc(m.last_error)}</small>` : ''}
-      ${m._kind === 'outbox' && ['pending', 'failed'].includes(m.status) ? `<button class="text-btn outbox-send-now" data-id="${media.esc(m.id)}" type="button">${m.status === 'failed' ? 'Retry' : 'Send now'}</button>` : ''}
+      ${m._kind === 'outbox' && !sendState.locked && ['pending', 'failed'].includes(m.status) ? `<button class="text-btn outbox-send-now" data-id="${media.esc(m.id)}" type="button">${m.status === 'failed' ? 'Retry' : 'Send now'}</button>` : ''}
     </div>`;
   }).join('') : '<div class="empty-list">No messages in this conversation yet.</div>';
   requestAnimationFrame(() => { box.scrollTop = atBottom ? box.scrollHeight : oldTop; });
@@ -593,6 +562,7 @@ async function refreshConversation() {
       const result = await media.api('/api/conversation?id=' + encodeURIComponent(id));
       if (media.state.inbox.selected?.id !== id || media.state.view !== 'inbox' || !document.querySelector('.inbox-layout')?.classList.contains('show-thread')) return;
       media.state.inbox.conversation = result;
+      renderFollowUp(result);
       $('conversation-lead-status').value = result.conversation?.lead_status || 'new';
       updateComposerState(result);
       renderConversation();
@@ -621,6 +591,10 @@ async function openInboxThread(row) {
     localReplies = [];
     clearAttachment();
     $('conversation-reply-body').value = '';
+    $('human-support-reply').checked=false;
+    $('follow-up-form').reset();
+    $('follow-up-status').textContent='';
+    $('follow-up-panel').open=false;
     resizeComposer();
     $('conversation-messages').innerHTML = '<div class="empty-list">Loading conversation…</div>';
   }
@@ -691,7 +665,7 @@ async function sendReply(event) {
   const attachment = pendingAttachment;
   const sendState=conversationSendState();
   if(sendState.locked){
-    $('composer-error').textContent='Waiting for this lead to answer the private reply on Instagram before another DM can be sent.';
+    $('composer-error').textContent=sendState.label;
     return;
   }
   if(sendState.privateReply&&attachment){
@@ -701,6 +675,7 @@ async function sendReply(event) {
   if (!body && !attachment) return;
   const button = $('conversation-reply-submit');
   if (button.disabled) return;
+  replyBusy=true;
   button.disabled = true;
   $('composer-error').textContent = '';
   const local = {
@@ -725,6 +700,7 @@ async function sendReply(event) {
     button.textContent = 'Sending…';
     const result = await media.api('/api/social/reply', {
       method: 'POST', body: { conversationId: selected.id, body: attachment ? '' : body,
+        purpose:$('human-support-reply').checked?'human_support':'conversation',
         ...(uploaded ? { attachment: { storagePath: uploaded.storagePath, type: uploaded.type, name: uploaded.name } } : {}) },
     });
     local.outboxId = result.outbox?.id;
@@ -741,8 +717,9 @@ async function sendReply(event) {
     if (!attachment && media.state.inbox.selected?.id === selected.id) { $('conversation-reply-body').value = body; resizeComposer(); }
     if (media.state.inbox.selected?.id === selected.id) $('composer-error').textContent = error.message;
   } finally {
-    button.disabled = false;
+    replyBusy=false;
     button.textContent = 'Send';
+    updateComposerState();
     $('conversation-reply-body').focus();
   }
 }
@@ -875,6 +852,35 @@ function resizeComposer() {
   input.style.height = `${Math.min(96, Math.max(42, input.scrollHeight))}px`;
 }
 
+function renderFollowUp(result) {
+  const followUp=result.follow_up;
+  const status=$('follow-up-status');
+  status.textContent=followUp?'Saved for '+new Date(followUp.due_at).toLocaleString()+' · manual review before sending':'';
+  if(!followUp || $('follow-up-panel').open) return;
+  $('follow-up-draft').value=followUp.draft;
+  const date=new Date(followUp.due_at);
+  $('follow-up-date').value=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+
+async function saveFollowUp(event, clear=false) {
+  event?.preventDefault();
+  const conversationId=media.state.inbox.selected?.id;
+  if(!conversationId) return;
+  const button=$('follow-up-form').querySelector('[type="submit"]');
+  button.disabled=true;
+  try{
+    const value=$('follow-up-date').value;
+    const result=await media.api('/api/social/follow-up',{method:'POST',body:{conversationId,clear,
+      draft:$('follow-up-draft').value,dueAt:value?new Date(value).toISOString():null}});
+    if(media.state.inbox.selected?.id!==conversationId) return;
+    media.state.inbox.conversation.follow_up=result.follow_up;
+    $('follow-up-status').textContent=clear?'Follow-up cleared.':'Follow-up saved · no message sent.';
+    if(clear) $('follow-up-form').reset();
+    window.loadAlchemicLeads?.();
+  }catch(error){$('follow-up-status').textContent=error.message;}
+  finally{button.disabled=false;}
+}
+
 function bindUi() {
   $('auth-tab-login').addEventListener('click', () => setAuthMode('login'));
   $('auth-tab-register').addEventListener('click', () => setAuthMode('register'));
@@ -886,6 +892,16 @@ function bindUi() {
     $('user-menu-popover').hidden = !$('user-menu-popover').hidden;
   });
 
+  $('human-support-reply').addEventListener('change',()=>updateComposerState());
+  $('follow-up-form').addEventListener('submit',saveFollowUp);
+  $('follow-up-clear').addEventListener('click',()=>saveFollowUp(null,true));
+  $('follow-up-load').addEventListener('click',()=>{
+    $('conversation-reply-body').value=$('follow-up-draft').value;
+    resizeComposer(); updateComposerState(); $('conversation-reply-body').focus();
+  });
+  $('follow-up-panel').addEventListener('toggle',()=>{
+    if($('follow-up-panel').open && !$('follow-up-draft').value) $('follow-up-draft').value=$('conversation-reply-body').value;
+  });
   $('refresh-inbox').addEventListener('click', () => syncInboxAccounts({ silent:false }));
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);
@@ -932,7 +948,7 @@ function bindUi() {
 
 setInterval(() => {
   if (!media?.state.auth.accessToken || document.hidden || media.state.view !== 'inbox') return;
-  if (media.state.inbox.selected && document.querySelector('.inbox-layout')?.classList.contains('show-thread')) refreshConversation();
+  if (media.state.inbox.selected && document.querySelector('.inbox-layout')?.classList.contains('show-thread')) {updateComposerState();refreshConversation();}
 }, 3500);
 setInterval(() => {
   if (!media?.state.auth.accessToken || document.hidden) return;

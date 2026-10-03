@@ -117,6 +117,10 @@ export async function insertMessage({conversation,account,contact,platformMessag
   if(existing?.[0]) return existing[0];
 
   const now=new Date().toISOString();
+  // Meta timestamps describe when the message occurred, not when a delayed
+  // webhook was processed. Re-delivery must not reopen an old DM window.
+  const eventTime=raw.timestamp!==undefined?Number(raw.timestamp):Date.parse(raw.created_time||'');
+  const sentAt=Number.isFinite(eventTime)&&eventTime>0&&eventTime<=Date.now()?new Date(eventTime).toISOString():now;
   const rows=await db('social_messages',{
     method:'POST',
     headers:{Prefer:'return=representation'},
@@ -131,7 +135,7 @@ export async function insertMessage({conversation,account,contact,platformMessag
       body,
       media_url:mediaUrl,
       delivery_status:direction==='inbound'?'received':'sent',
-      sent_at:now,
+      sent_at:sentAt,
       raw_json:raw,
       ...(account.workspace_id?{workspace_id:account.workspace_id}:{})
     }
@@ -142,8 +146,8 @@ export async function insertMessage({conversation,account,contact,platformMessag
     {
       method:'PATCH',
       body:{
-        last_message_at:now,
-        ...(direction==='inbound'?{last_inbound_at:now}:{last_outbound_at:now}),
+        last_message_at:sentAt,
+        ...(direction==='inbound'?{last_inbound_at:sentAt}:{last_outbound_at:sentAt}),
         updated_at:now
       }
     }

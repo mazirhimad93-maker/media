@@ -113,6 +113,10 @@
   to = "/.netlify/functions/conversation"
   status = 200
 [[redirects]]
+  from = "/api/social/follow-up"
+  to = "/.netlify/functions/social-follow-up"
+  status = 200
+[[redirects]]
   from = "/api/social/reply"
   to = "/.netlify/functions/social-reply"
   status = 200

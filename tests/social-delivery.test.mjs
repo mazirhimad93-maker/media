@@ -8,7 +8,7 @@ const job={
   body:'Hello from the inbox',status:'pending',attempts:0,max_attempts:5
 };
 
-function fakeDatabase({claim=true}={}){
+function fakeDatabase({claim=true, inboundAt=new Date().toISOString()}={}){
   const calls=[];
   const db=async (path,options)=>{
     calls.push({path,options});
@@ -16,6 +16,8 @@ function fakeDatabase({claim=true}={}){
     if(path.startsWith('social_outbox?') && path.includes('status=eq.pending')) return claim?[{...job,status:'sending',attempts:1}]:[];
     if(path.startsWith('content_accounts?')) return [{id:'account-1',platform:'instagram_reels',platform_account_id:'ig-1',access_token:'test-token'}];
     if(path.startsWith('social_contacts?')) return [{id:'contact-1',platform_user_id:'sender-1'}];
+    if(path.startsWith('social_conversations?')&&!options) return [{id:'conversation-1',account_id:'account-1',contact_id:'contact-1',platform:'instagram_reels',metadata:{}}];
+    if(path.startsWith('social_messages?')&&path.includes('message_type=not.in.')) return inboundAt?[{direction:'inbound',message_type:'text',sent_at:inboundAt}]:[];
     if(path.startsWith('social_messages?')) return [];
     return null;
   };
@@ -91,6 +93,8 @@ test('an Instagram private reply is addressed to the comment and bypasses the or
     if(path.startsWith('social_outbox?')&&path.includes('status=eq.pending')) return [{...privateJob,status:'sending',attempts:1}];
     if(path.startsWith('content_accounts?')) return [{id:'account-1',platform:'instagram_reels',platform_account_id:'ig-1',access_token:'test-token'}];
     if(path.startsWith('social_contacts?')) return [{id:'contact-1',platform_user_id:'sender-1'}];
+    if(path.startsWith('social_conversations?')&&!options) return [{id:'conversation-1',account_id:'account-1',contact_id:'contact-1',platform:'instagram_reels',metadata:{}}];
+    if(path.startsWith('social_messages?')&&path.includes('message_type=eq.comment')) return [{direction:'inbound',message_type:'comment',platform_message_id:'comment-123',sent_at:new Date().toISOString()}];
     if(path.startsWith('social_messages?')) return [];
     return null;
   };
@@ -104,4 +108,24 @@ test('an Instagram private reply is addressed to the comment and bypasses the or
   });
   assert.equal(result.sent,true);
   assert.deepEqual(payload,{recipient:{comment_id:'comment-123'},message:{text:privateJob.body}});
+});
+
+
+test('expired queued DMs never reach Meta and never enter a retry loop',async()=>{
+  const {db,calls}=fakeDatabase({inboundAt:new Date(Date.now()-25*3600000).toISOString()});
+  let sends=0;
+  const result=await dispatchSocialOutboxItem('outbox-1','workspace-1',{db,fetcher:async()=>{sends++;}});
+  assert.equal(sends,0);
+  assert.equal(result.status,'failed');
+  assert.match(result.error,/window closed/);
+  assert.equal(calls.some(c=>c.options?.body?.lead_status),false);
+});
+
+test('Meta window rejection is terminal for automated dispatch and records a block',async()=>{
+  const {db,calls}=fakeDatabase();
+  const {deliverClaimedSocialJob}=await import('../netlify/functions/_social-delivery.mjs');
+  const result=await deliverClaimedSocialJob({...job,status:'sending',attempts:1,workspace_id:'workspace-1'},{db,
+    fetcher:async()=>new Response(JSON.stringify({error:{message:'Outside allowed window',code:10,error_subcode:2534022}}),{status:400})});
+  assert.equal(result.status,'failed');
+  assert.ok(calls.find(c=>c.options?.body?.metadata?.messaging_block?.subcode===2534022));
 });

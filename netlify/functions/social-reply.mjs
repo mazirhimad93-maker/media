@@ -1,5 +1,6 @@
 import { connectorOrigin, jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
 import { dispatchSocialOutboxItem } from './_social-delivery.mjs';
+import { loadMessagingContext, assertMessagingAllowed } from './_messaging-eligibility.mjs';
 
 export default async (request) => {
   try {
@@ -19,54 +20,24 @@ export default async (request) => {
     const c=rows?.[0];
     if(!c) throw Object.assign(new Error('Conversation not found'),{status:404});
 
-    const inboundMessages=await supabaseRequest(scopedPath(
-      'social_messages?conversation_id=eq.'+encodeURIComponent(conversationId)+
-      '&direction=eq.inbound&select=id,message_type,platform_message_id,sent_at,created_at&order=sent_at.desc&limit=100',
-      workspaceId
-    )).catch(()=>[]);
-    const hasInboundDm=(inboundMessages||[]).some(message=>message.message_type!=='comment');
-    const inboundComments=(inboundMessages||[]).filter(message=>message.message_type==='comment'&&message.platform_message_id);
-
-    const priorPrivateReplies=await supabaseRequest(scopedPath(
-      'social_outbox?conversation_id=eq.'+encodeURIComponent(conversationId)+
-      '&reply_mode=eq.private_reply&select=id,target_platform_id,status,platform_message_id,last_error,queued_at&order=queued_at.desc&limit=100',
-      workspaceId
-    )).catch(()=>[]);
-
     let replyMode=String(input.replyMode||'').trim();
+    if(replyMode && !['dm','private_reply'].includes(replyMode)) throw Object.assign(new Error('Unsupported reply mode'),{status:400});
     let targetPlatformId=input.targetPlatformId||null;
-
-    // A public comment does not open the ordinary Instagram DM window.
-    // Before the commenter has replied in Direct, the only valid first
-    // outbound message is a private reply anchored to an unused comment ID.
-    if(!replyMode && c.platform==='instagram_reels' && !hasInboundDm){
-      const reserved=new Set((priorPrivateReplies||[])
-        .filter(item=>['pending','sending','sent'].includes(item.status))
-        .map(item=>String(item.target_platform_id||''))
-        .filter(Boolean));
-      const available=inboundComments.find(message=>!reserved.has(String(message.platform_message_id)));
-
-      if(available){
-        if(attachment){
-          throw Object.assign(new Error('Instagram requires the first comment-to-DM private reply to be text. Send a text first; attachments unlock after the person replies.'),{status:409});
-        }
-        replyMode='private_reply';
-        targetPlatformId=available.platform_message_id;
-      }else{
-        const sent=(priorPrivateReplies||[]).some(item=>['pending','sending','sent'].includes(item.status));
-        if(sent){
-          throw Object.assign(new Error('Private reply sent. Waiting for this lead to answer on Instagram before another DM can be sent.'),{status:409});
-        }
-      }
-    }
-
-    if(!replyMode) replyMode='dm';
     const accounts=await supabaseRequest(scopedPath(
-      'content_accounts?id=eq.'+encodeURIComponent(c.account_id)+'&select=id,access_token,metadata&limit=1',workspaceId
+      'content_accounts?id=eq.'+encodeURIComponent(c.account_id)+'&select=id,platform,access_token,metadata,capabilities_json&limit=1',workspaceId
     ));
     if(!accounts?.[0]?.access_token||accounts[0].metadata?.disconnected_at){
       throw Object.assign(new Error('This channel is disconnected. Reconnect it before replying.'),{status:409});
     }
+    const eligibility=await loadMessagingContext({...c,workspace_id:workspaceId},accounts[0]);
+    // Pick an available private reply even if an old DM once existed.
+    if(!input.replyMode && eligibility.reply_mode==='private_reply'){
+      replyMode='private_reply'; targetPlatformId=eligibility.target_platform_id;
+    }
+    if(!replyMode) replyMode='dm';
+    if(replyMode==='dm') targetPlatformId=null;
+    assertMessagingAllowed(eligibility,{replyMode,targetPlatformId,manual:true,purpose:input.purpose});
+    if(attachment && replyMode==='private_reply') throw Object.assign(new Error('The first private reply must be text.'),{status:409});
     let media=null;
     if(attachment){
       const type=String(attachment.type||'');
@@ -94,6 +65,7 @@ export default async (request) => {
         metadata:{
           manual:true,
           created_from:'alchemic_media',
+          purpose:input.purpose==='human_support'?'human_support':'conversation',
           ...(replyMode==='private_reply'?{comment_private_reply:true}:{}),
           ...(media?{attachment:media}:{})
         },

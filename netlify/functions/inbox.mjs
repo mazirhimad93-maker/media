@@ -1,4 +1,5 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { enrichMessagingRows } from './_messaging-eligibility.mjs';
 
 export default async (request) => {
   try {
@@ -8,9 +9,9 @@ export default async (request) => {
     const offset=Math.max(0,Number(url.searchParams.get('offset')||0));
 
     const accounts=await supabaseRequest(
-      scopedPath('content_accounts?select=id,metadata&limit=5000',workspaceId)
+      scopedPath('content_accounts?select=id,metadata,capabilities_json&limit=5000',workspaceId)
     ).catch(()=>[]);
-    const ids=(accounts||[]).filter(a=>!a.metadata?.disconnected_at).map(a=>a.id).filter(Boolean);
+    const ids=(accounts||[]).map(a=>a.id).filter(Boolean);
 
     if(workspaceId && !ids.length) return jsonResponse({social:[]});
 
@@ -26,7 +27,7 @@ export default async (request) => {
       ? (social||[]).filter(x=>allowed.has(x.account_id))
       : (social||[]);
 
-    return jsonResponse({social:filtered});
+    return jsonResponse({social:await enrichMessagingRows(filtered,accounts||[],workspaceId)});
   } catch(error){
     return publicError(error,error.status||500);
   }

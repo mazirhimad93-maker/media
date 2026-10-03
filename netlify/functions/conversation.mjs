@@ -1,4 +1,5 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { loadMessagingContext } from './_messaging-eligibility.mjs';
 
 export async function markVisibleMessagesRead(id,workspaceId,{unreadCount,lastInboundAt},db=supabaseRequest){
   if(!Number.isSafeInteger(unreadCount)||unreadCount<1||!lastInboundAt||Number.isNaN(Date.parse(lastInboundAt)))
@@ -19,7 +20,7 @@ export default async (request) => {
     if(!id) throw Object.assign(new Error('conversation id required'),{status:400});
 
     const owned=await supabaseRequest(
-      scopedPath('social_conversations?id=eq.'+encodeURIComponent(id)+'&select=id,account_id,contact_id,platform&limit=1',workspaceId)
+      scopedPath('social_conversations?id=eq.'+encodeURIComponent(id)+'&select=id,account_id,contact_id,platform,metadata&limit=1',workspaceId)
     );
     if(!owned?.[0]) throw Object.assign(new Error('Conversation not found'),{status:404});
 
@@ -42,11 +43,15 @@ export default async (request) => {
     ]);
 
     if(!conversation?.[0]) throw Object.assign(new Error('Conversation not found'),{status:404});
+    const account=(await supabaseRequest(scopedPath('content_accounts?id=eq.'+encodeURIComponent(owned[0].account_id)+'&select=id,platform,capabilities_json,metadata&limit=1',workspaceId)))?.[0];
+    const eligibility=await loadMessagingContext({...owned[0],workspace_id:workspaceId},account||{connected:false});
 
     return jsonResponse({
       conversation:conversation[0],
       messages:messages||[],
       outbox:outbox||[],
+      messaging_eligibility:eligibility,
+      follow_up:owned[0].metadata?.follow_up||null,
       comment_automation_events:commentAutomationEvents||[]
     });
   } catch(error){

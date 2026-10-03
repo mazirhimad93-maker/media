@@ -445,14 +445,32 @@
                   <span id="conversation-mode-note">Sent through your connected channel</span>
                 </div>
                 <div id="composer-error" class="composer-error" role="status" aria-live="polite"></div>
+                <label id="human-support-option" hidden><input id="human-support-reply" type="checkbox"> This is a manual support reply, without promotional content.</label>
               </form>
+              <div class="conversation-next-action">
+                <a id="conversation-native-link" target="_blank" rel="noopener" hidden>Open in Instagram</a>
+                <details id="follow-up-panel"><summary>Plan a follow-up</summary>
+                  <form id="follow-up-form">
+                    <label for="follow-up-date">Follow-up date</label><input id="follow-up-date" type="datetime-local" required>
+                    <label for="follow-up-draft">Saved message</label><textarea id="follow-up-draft" rows="3" maxlength="5000" required></textarea>
+                    <p>Saved for your team to review. Sending still depends on the channel’s messaging availability.</p>
+                    <div class="follow-up-actions"><button class="primary-inline-btn" type="submit">Save follow-up</button><button id="follow-up-load" class="text-btn" type="button">Use draft</button><button id="follow-up-clear" class="text-btn" type="button">Clear</button></div>
+                    <div id="follow-up-status" role="status" aria-live="polite"></div>
+                  </form>
+                </details>
+              </div>
             </div>
           </article>
         </div>
       </section>
 
       <section class="view" id="view-leads">
-        <div class="section-top"><div><h2>Lead Pipeline</h2><p>Move contacts through your CRM. Open a card to reply.</p></div></div>
+        <div class="section-top"><div><h2>Lead Pipeline</h2><p>Leads and conversations stay saved when a messaging window closes.</p></div></div>
+        <div class="lead-follow-up-filters">
+          <label>Messaging<select id="lead-messaging-filter"><option value="all">All leads</option><option value="open">DM open</option><option value="expiring">Closes within 4 hours</option><option value="closed">Re-engagement needed</option><option value="human">Human support only</option><option value="unavailable">Channel unavailable</option></select></label>
+          <label>Follow-up<select id="lead-follow-up-filter"><option value="all">All activity</option><option value="due">Follow-up due</option><option value="30">Not contacted for 30+ days</option><option value="planned">Saved follow-ups</option></select></label>
+          <label class="lead-not-booked"><input id="lead-not-booked" type="checkbox"> Not booked</label>
+        </div>
         <div id="leads-message" class="connector-message" role="status"></div>
         <div class="lead-mobile-filter"><label for="lead-stage-filter">Stage</label><select id="lead-stage-filter"><option value="new">New</option><option value="engaged">Engaged</option><option value="qualified">Qualified</option><option value="booked">Booked</option><option value="client">Client</option><option value="closed">Closed</option></select></div>
         <div class="pipeline-board" id="lead-board">

@@ -1,4 +1,5 @@
 import { scopedPath, supabaseRequest } from './_shared.mjs';
+import { loadMessagingContext, assertMessagingAllowed } from './_messaging-eligibility.mjs';
 
 function outgoingMessage(job){
   const attachment=job.metadata?.attachment;
@@ -19,7 +20,7 @@ async function sendInstagram(account, contact, job, fetcher){
     if(!id) throw new Error('Recipient platform user ID is missing');
     recipient={id};
   }
-  const response=await fetcher(endpoint,{method:'POST',headers:{authorization:`Bearer ${account.access_token}`,'content-type':'application/json'},body:JSON.stringify({recipient,message:outgoingMessage(job)})});
+  const response=await fetcher(endpoint,{method:'POST',headers:{authorization:`Bearer ${account.access_token}`,'content-type':'application/json'},body:JSON.stringify({recipient,message:outgoingMessage(job),...(job._messageTag?{messaging_type:'MESSAGE_TAG',tag:job._messageTag}:{})})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||data?.error){
     const meta=data?.error||{};
@@ -54,7 +55,8 @@ async function sendFacebook(account, contact, job, fetcher){
     },
     body:JSON.stringify({
       recipient:{id:recipientId},
-      messaging_type:'RESPONSE',
+      messaging_type:job._messageTag?'MESSAGE_TAG':'RESPONSE',
+      ...(job._messageTag?{tag:job._messageTag}:{}),
       message:outgoingMessage(job)
     })
   });
@@ -65,19 +67,32 @@ async function sendFacebook(account, contact, job, fetcher){
 }
 
 export async function deliverClaimedSocialJob(job,{db=supabaseRequest,fetcher=fetch,retryOnFailure=true}={}){
-  let account,contact,sent;
+  let account,contact,sent,conversation,eligibility;
   try{
     const [accounts,contacts]=await Promise.all([
-      db(`content_accounts?id=eq.${encodeURIComponent(job.account_id)}&select=id,platform,platform_account_id,username,access_token,capabilities_json&limit=1`),
-      db(`social_contacts?id=eq.${encodeURIComponent(job.contact_id)}&select=id,platform,platform_user_id,username,display_name,metadata&limit=1`)
+      db(scopedPath(`content_accounts?id=eq.${encodeURIComponent(job.account_id)}&select=id,platform,platform_account_id,username,access_token,capabilities_json,metadata&limit=1`,job.workspace_id)),
+      db(scopedPath(`social_contacts?id=eq.${encodeURIComponent(job.contact_id)}&select=id,platform,platform_user_id,username,display_name,metadata&limit=1`,job.workspace_id))
     ]);
     account=accounts?.[0]; contact=contacts?.[0];
     if(!account||!contact) throw new Error('Account or contact not found');
+    conversation=(await db(scopedPath(`social_conversations?id=eq.${encodeURIComponent(job.conversation_id)}&select=id,account_id,contact_id,platform,metadata&limit=1`,job.workspace_id)))?.[0];
+    if(!conversation || conversation.account_id!==job.account_id || conversation.contact_id!==job.contact_id) throw Object.assign(new Error('Conversation does not belong to this reply.'),{messagingBlocked:true});
+    eligibility=await loadMessagingContext({...conversation,workspace_id:job.workspace_id},{...account,connected:Boolean(account.access_token)},{db,excludeOutboxId:job.id});
+    const tag=assertMessagingAllowed(eligibility,{replyMode:job.reply_mode,targetPlatformId:job.target_platform_id,manual:job.metadata?.manual===true&&job.metadata?.automated!==true,purpose:job.metadata?.purpose});
+    if(job.reply_mode==='private_reply' && job.metadata?.attachment) throw Object.assign(new Error('The first private reply must be text.'),{messagingBlocked:true});
+    if(job.reply_mode==='dm' && job.target_platform_id && String(job.target_platform_id)!==String(contact.platform_user_id)) throw Object.assign(new Error('DM recipient does not match this contact.'),{messagingBlocked:true});
+    job={...job,_messageTag:tag};
     if(account.platform==='instagram_reels') sent=await sendInstagram(account,contact,job,fetcher);
     else if(account.platform==='facebook_page') sent=await sendFacebook(account,contact,job,fetcher);
     else throw new Error(`Outbound messaging not enabled yet for ${account.platform}`);
   }catch(error){
-    const status=retryOnFailure && job.attempts<job.max_attempts?'pending':'failed';
+    const windowRejected=Number(error.meta?.error_subcode)===2534022;
+    const status=!error.messagingBlocked && !windowRejected && retryOnFailure && job.attempts<job.max_attempts?'pending':'failed';
+    if(windowRejected && conversation){
+      // Conditional metadata update avoids overwriting a concurrently saved note.
+      const previous=conversation.metadata||{};
+      await db(scopedPath(`social_conversations?id=eq.${encodeURIComponent(job.conversation_id)}&metadata=eq.${encodeURIComponent(JSON.stringify(previous))}`,job.workspace_id),{method:'PATCH',body:{metadata:{...previous,messaging_block:{at:new Date().toISOString(),last_inbound_dm_at:eligibility?.last_inbound_dm_at||null,code:10,subcode:2534022}}}}).catch(()=>{});
+    }
     await db(`social_outbox?id=eq.${encodeURIComponent(job.id)}`,{method:'PATCH',body:{status,last_error:String(error.message||error).slice(0,1000),locked_at:null,locked_by:null,updated_at:new Date().toISOString()}}).catch(()=>{});
     return {id:job.id,status,error:error.message};
   }
