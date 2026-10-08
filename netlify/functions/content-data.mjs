@@ -1,25 +1,30 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { loadMetricData, readAllRows } from './_analytics-read.mjs';
 
-const safe=async path=>supabaseRequest(path).catch(()=>[]);
 const n=v=>Number(v||0);
 
-export default async (request) => {
-  try {
-    const {workspaceId}=await requireWorkspace(request);
+export async function loadContentData(workspaceId, db=supabaseRequest) {
+    const warnings=[];
+    const read=path=>readAllRows(path,{db});
+    const optional=async path=>{
+      try{return await read(path);}
+      catch(error){warnings.push({section:path.split('?')[0],error:'This analytics section could not be loaded.'});return [];}
+    };
 
-    const [queue,assets,accounts,history,metrics,dailyMetrics,campaigns,links,clicks,conversations,messages] = await Promise.all([
-      safe(scopedPath('content_publish_queue?select=*&order=created_at.desc&limit=5000',workspaceId)),
-      safe(scopedPath('content_assets?select=*&order=created_at.desc&limit=3000',workspaceId)),
-      safe(scopedPath('content_accounts?select=id,platform,username,display_name,platform_account_id&limit=2000',workspaceId)),
-      safe(scopedPath('content_history?select=*&order=created_at.desc&limit=10000',workspaceId)),
-      safe(scopedPath('post_metrics_snapshots?select=*&order=captured_at.asc&limit=30000',workspaceId)),
-      safe(scopedPath('post_daily_metrics?select=*&order=metric_date.asc&limit=50000',workspaceId)),
-      safe(scopedPath('content_campaigns?select=id,name,status&limit=1000',workspaceId)),
-      safe(scopedPath('tracked_links?select=id,campaign_id,asset_id,history_id,account_id,slug,destination_url&limit=15000',workspaceId)),
-      safe(scopedPath('tracked_link_clicks?select=id,tracked_link_id,occurred_at&order=occurred_at.asc&limit=50000',workspaceId)),
-      safe(scopedPath('social_conversations?select=id,account_id,source_history_id,source_external_post_id,created_at,last_inbound_at,last_message_at&limit=20000',workspaceId)),
-      safe(scopedPath('social_messages?select=id,conversation_id,direction,message_type,sent_at,created_at&order=sent_at.asc&limit=60000',workspaceId))
+    const [queue,assets,accounts,history,metricData,dailyMetrics,campaigns,links,clicks,conversations,messages] = await Promise.all([
+      read(scopedPath('content_publish_queue?select=*&order=created_at.desc,id.desc',workspaceId)),
+      read(scopedPath('content_assets?select=*&order=created_at.desc,id.desc',workspaceId)),
+      read(scopedPath('content_accounts?select=id,platform,username,display_name,platform_account_id&order=id.asc',workspaceId)),
+      read(scopedPath('content_history?select=*&event_type=eq.published&order=created_at.desc,id.desc',workspaceId)),
+      loadMetricData(workspaceId,db),
+      optional(scopedPath('post_daily_metrics?select=*&order=metric_date.asc,id.asc',workspaceId)),
+      read(scopedPath('content_campaigns?select=id,name,status&order=id.asc',workspaceId)),
+      optional(scopedPath('tracked_links?select=id,campaign_id,asset_id,history_id,account_id,slug,destination_url&order=id.asc',workspaceId)),
+      optional(scopedPath('tracked_link_clicks?select=id,tracked_link_id,occurred_at&order=occurred_at.asc,id.asc',workspaceId)),
+      optional(scopedPath('social_conversations?select=id,account_id,source_history_id,source_external_post_id,created_at,last_inbound_at,last_message_at&order=id.asc',workspaceId)),
+      optional(scopedPath('social_messages?select=id,conversation_id,direction,message_type,sent_at,created_at&order=sent_at.asc,id.asc',workspaceId))
     ]);
+    const metrics=metricData.latest;
 
     const assetById=new Map((assets||[]).map(x=>[x.id,x]));
     const accountById=new Map((accounts||[]).map(x=>[x.id,x]));
@@ -35,14 +40,13 @@ export default async (request) => {
 
     const latestMetricByHistory=new Map();
     const metricSeriesByHistory=new Map();
-    for(const m of metrics||[]){
+    for(const m of metricData.samples||[]){
       if(!m.history_id) continue;
       const list=metricSeriesByHistory.get(m.history_id)||[];
       list.push(m);
       metricSeriesByHistory.set(m.history_id,list);
-      const current=latestMetricByHistory.get(m.history_id);
-      if(!current||new Date(m.captured_at||0)>new Date(current.captured_at||0)) latestMetricByHistory.set(m.history_id,m);
     }
+    for(const m of metrics) latestMetricByHistory.set(m.history_id,m);
 
     const dailyByHistory=new Map();
     for(const d of dailyMetrics||[]){
@@ -95,15 +99,15 @@ export default async (request) => {
 
     const rows=(queue||[]).map(q=>{
       const asset=assetById.get(q.asset_id)||{};
-      const account=accountById.get(q.selected_account_id||q.account_id)||{};
+      const h=historyByQueue.get(q.id)||null;
+      const account=accountById.get(h?.account_id||q.selected_account_id||q.account_id)||{};
       const campaignId=q.campaign_id||asset.campaign_id||null;
       const campaign=campaignById.get(campaignId)||{};
-      const h=historyByQueue.get(q.id)||null;
       const m=h?latestMetricByHistory.get(h.id)||{}:{};
 
       const platform=q.platform||account.platform||null;
-      const rawMetrics=m.raw_json||{};
-      const hasSnapshot=Boolean(m.id);
+      const rawMetrics=m.raw_json||{insights_ok:m.insights_ok};
+      const hasSnapshot=Boolean(m.id||m.history_id);
       const instagramInsightsReady=platform!=='instagram_reels' || rawMetrics.insights_ok===true || Boolean(rawMetrics.insights?.data?.length);
       const viewsAvailable=hasSnapshot && instagramInsightsReady;
       const interactionsAvailable=hasSnapshot;
@@ -221,31 +225,49 @@ export default async (request) => {
 
     // If true daily history is unavailable, use snapshot growth from the moment
     // Media started collecting metrics. This never double-counts daily Analytics rows.
+    for(const growth of metricData.growth||[]){
+      if(historiesWithDaily.has(growth.history_id)) continue;
+      const row=rowByHistory.get(growth.history_id);
+      if(!row) continue;
+      if(!['views','likes','comments','shares','saves'].some(key=>n(growth[key])>0)) continue;
+      activity_points.push({queue_id:row.queue_id,history_id:row.history_id,campaign_id:row.campaign_id,platform:row.platform,
+        occurred_at:growth.metric_date+'T12:00:00Z',views:n(growth.views),likes:n(growth.likes),comments:n(growth.comments),
+        shares:n(growth.shares),saves:n(growth.saves),engagements:n(growth.likes)+n(growth.comments)+n(growth.shares)+n(growth.saves),
+        link_clicks:0,inbound_dms:0,dm_threads:0,source:'snapshot_delta'});
+    }
+
+    const sampledGrowth=new Map();
     for(const [historyId,series] of metricSeriesByHistory.entries()){
       if(historiesWithDaily.has(historyId)) continue;
       const row=rowByHistory.get(historyId);
       if(!row) continue;
-      let prev={views:0,likes:0,comments:0,shares:0,saves:0};
+      let prev={};
 
       for(const m of series.slice().sort((a,b)=>new Date(a.captured_at||0)-new Date(b.captured_at||0))){
-        const current={views:n(m.views),likes:n(m.likes),comments:n(m.comments),shares:n(m.shares),saves:n(m.saves)};
+        const insightsReady=row.platform!=='instagram_reels'||m.insights_ok===true;
+        const current={views:insightsReady?n(m.views):null,likes:n(m.likes),comments:n(m.comments),shares:n(m.shares),saves:n(m.saves)};
         const delta={
-          views:Math.max(0,current.views-prev.views),
-          likes:Math.max(0,current.likes-prev.likes),
-          comments:Math.max(0,current.comments-prev.comments),
-          shares:Math.max(0,current.shares-prev.shares),
-          saves:Math.max(0,current.saves-prev.saves)
+          views:current.views===null||prev.views===undefined?0:Math.max(0,current.views-prev.views),
+          likes:prev.likes===undefined?0:Math.max(0,current.likes-prev.likes),
+          comments:prev.comments===undefined?0:Math.max(0,current.comments-prev.comments),
+          shares:prev.shares===undefined?0:Math.max(0,current.shares-prev.shares),
+          saves:prev.saves===undefined?0:Math.max(0,current.saves-prev.saves)
         };
-        activity_points.push({
-          queue_id:row.queue_id,history_id:historyId,campaign_id:row.campaign_id,platform:row.platform,
-          occurred_at:m.captured_at,
-          ...delta,
-          engagements:delta.likes+delta.comments+delta.shares+delta.saves,
-          link_clicks:0,inbound_dms:0,dm_threads:0,source:'snapshot_delta'
-        });
-        prev=current;
+        if(Object.values(delta).some(value=>value>0)) {
+          const date=String(m.captured_at).slice(0,10),key=historyId+'/'+date;
+          const point=sampledGrowth.get(key)||{
+            queue_id:row.queue_id,history_id:historyId,campaign_id:row.campaign_id,platform:row.platform,
+            occurred_at:date+'T12:00:00Z',views:0,likes:0,comments:0,shares:0,saves:0,engagements:0,
+            link_clicks:0,inbound_dms:0,dm_threads:0,source:'snapshot_delta'
+          };
+          for(const key of Object.keys(delta)) point[key]+=delta[key];
+          point.engagements=point.likes+point.comments+point.shares+point.saves;
+          sampledGrowth.set(key,point);
+        }
+        for(const key of Object.keys(current)) if(current[key]!==null) prev[key]=Math.max(prev[key]??0,current[key]);
       }
     }
+    activity_points.push(...sampledGrowth.values());
 
     // Link-click activity. History-level links are exact; asset-only links fall
     // back to the latest published instance of that asset.
@@ -291,12 +313,14 @@ export default async (request) => {
 
     const published=rows.filter(x=>x.status==='done'||x.external_post_id||x.external_post_url);
 
-    return jsonResponse({
+    return {
       rows,
       published,
       metric_points:activity_points,
       activity_points,
       campaigns:(campaigns||[]).map(c=>({id:c.id,name:c.name,status:c.status})),
+      warnings,
+      analytics_source:metricData.source,
       summary:{
         total_queue:rows.length,
         published:published.length,
@@ -317,7 +341,13 @@ export default async (request) => {
         latest_metrics_at:published.map(x=>x.metrics_captured_at).filter(Boolean).sort().at(-1)||null,
         daily_metric_rows:(dailyMetrics||[]).length
       }
-    });
+    };
+}
+
+export default async (request) => {
+  try {
+    const {workspaceId}=await requireWorkspace(request);
+    return jsonResponse(await loadContentData(workspaceId));
   } catch(error){
     return publicError(error,error.status||500);
   }
