@@ -260,7 +260,7 @@ export async function reconnectAccount(state, platform, platformAccountId = null
     throw error;
   }
   if (platformAccountId !== null && String(account.platform_account_id) !== String(platformAccountId)) {
-    const error = new Error(`Meta returned a different account. Select @${account.username || 'the requested channel'} and try again.`);
+    const error = new Error(`The provider returned a different account. Select @${account.username || 'the requested channel'} and try again.`);
     error.status = 409;
     throw error;
   }

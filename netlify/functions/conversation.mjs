@@ -51,7 +51,6 @@ export default async (request) => {
       messages:messages||[],
       outbox:outbox||[],
       messaging_eligibility:eligibility,
-      follow_up:owned[0].metadata?.follow_up||null,
       comment_automation_events:commentAutomationEvents||[]
     });
   } catch(error){

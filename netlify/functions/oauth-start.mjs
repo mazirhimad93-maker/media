@@ -8,9 +8,8 @@ export default async (request) => {
     if (!['youtube','instagram','facebook'].includes(provider)) throw Object.assign(new Error('Unsupported OAuth provider'), { status: 400 });
     if (!providerConfig()[provider].ready) throw Object.assign(new Error(`${provider} app credentials are not configured`), { status: 409 });
     const reconnectAccountId = url.searchParams.get('reconnectAccountId') || null;
-    if (reconnectAccountId && provider === 'youtube') throw Object.assign(new Error('YouTube reconnect is not available here'), { status: 400 });
     const existing = reconnectAccountId ? await reconnectAccount(
-      { reconnectAccountId, workspaceId }, provider === 'instagram' ? 'instagram_reels' : 'facebook_page'
+      { reconnectAccountId, workspaceId }, provider === 'youtube' ? 'youtube_shorts' : provider === 'instagram' ? 'instagram_reels' : 'facebook_page'
     ) : null;
     const state = signOAuthState({
       provider,
@@ -30,7 +29,7 @@ export default async (request) => {
         client_id: process.env.GOOGLE_CLIENT_ID.trim(),
         redirect_uri: cb.youtube,
         response_type: 'code',
-        scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly',
+        scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/yt-analytics.readonly',
         access_type: 'offline', prompt: 'consent select_account', include_granted_scopes: 'true', state,
       });
       authorizationUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;

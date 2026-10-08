@@ -35,14 +35,14 @@ export async function enrichMessagingRows(rows, accounts, workspaceId, db = supa
       if (!page || page.length < 1000 || ids.every(id => latest.has(id))) break;
     }
   }
-  // Read only the metadata needed for provider rejection and saved follow-ups.
+  // Read metadata needed for provider rejection.
   const details = new Map();
   for (let start = 0; start < rows.length; start += 100) {
     const ids = rows.slice(start, start + 100).map(r => r.conversation_id);
     const page = await db(scopedPath('social_conversations?id=in.(' + ids.map(encodeURIComponent).join(',') + ')&select=id,metadata&limit=100', workspaceId));
     for (const c of page || []) details.set(c.id, c.metadata || {});
   }
-  return rows.map(row => ({...row, follow_up: details.get(row.conversation_id)?.follow_up || null,
+  return rows.map(row => ({...row,
     messaging_eligibility: messagingEligibility({platform: row.platform, latestInbound: latest.get(row.conversation_id),
       account: accountMap.get(row.account_id) || {}, metadata: details.get(row.conversation_id) || {}})}));
 }

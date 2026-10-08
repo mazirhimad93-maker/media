@@ -125,7 +125,7 @@
               <div><span>Clipper database</span><strong class="ok">Connected</strong></div>
               <div><span>Distributor queue</span><strong id="queue-status" class="ok">Connected</strong></div>
               <div><span>Instagram inbox</span><strong class="pending">Add messaging OAuth</strong></div>
-              
+
             </div>
           </article>
         </div>
@@ -368,16 +368,27 @@
           </div>
           <div id="content-mobile-list" class="content-mobile-list"></div>
         </article>
+        <article class="card channel-activity-card">
+          <div class="card-head"><div><h2>Live channel posts</h2><p>Recent posts pulled directly from your channel, including posts outside this app. These are lifetime counts for each post.</p></div></div>
+          <div class="comments-toolbar"><label>Channel<select id="activity-channel" aria-label="Live channel"><option value="">Choose a channel</option></select></label><button id="activity-refresh" class="secondary-btn" type="button">Refresh channel</button></div>
+          <div id="activity-status" role="status" aria-live="polite"></div><div id="activity-posts" class="activity-posts"></div>
+          <button id="activity-more" class="secondary-btn" type="button" hidden>Load older posts</button>
+        </article>
       </section>
 
       <section class="view" id="view-inbox">
         <div class="section-top">
-          <div><h2>DM Inbox</h2><p>Instagram and Facebook Page messages from your connected accounts.</p></div>
+          <div><h2>Inbox</h2><p>Messages and public comments from your connected accounts.</p></div>
           <div class="filters">
             <button id="refresh-inbox" class="secondary-btn" type="button">Sync messages</button>
           </div>
         </div>
 
+        <div class="inbox-top-tabs" role="tablist" aria-label="Inbox sections">
+          <button id="inbox-messages-tab" class="active" type="button" role="tab" aria-selected="true" aria-controls="inbox-messages-panel">Messages</button>
+          <button id="inbox-comments-tab" type="button" role="tab" aria-selected="false" aria-controls="inbox-comments-panel">Comments <span id="comments-unread-count" class="small-badge">0</span></button>
+        </div>
+        <div id="inbox-messages-panel" role="tabpanel" aria-labelledby="inbox-messages-tab">
         <details class="card inbox-health-card">
           <summary class="inbox-health-head">
             <strong>Connections</strong>
@@ -449,18 +460,33 @@
               </form>
               <div class="conversation-next-action">
                 <a id="conversation-native-link" target="_blank" rel="noopener" hidden>Open in Instagram</a>
-                <details id="follow-up-panel"><summary>Plan a follow-up</summary>
-                  <form id="follow-up-form">
-                    <label for="follow-up-date">Follow-up date</label><input id="follow-up-date" type="datetime-local" required>
-                    <label for="follow-up-draft">Saved message</label><textarea id="follow-up-draft" rows="3" maxlength="5000" required></textarea>
-                    <p>Saved for your team to review. Sending still depends on the channel’s messaging availability.</p>
-                    <div class="follow-up-actions"><button class="primary-inline-btn" type="submit">Save follow-up</button><button id="follow-up-load" class="text-btn" type="button">Use draft</button><button id="follow-up-clear" class="text-btn" type="button">Clear</button></div>
-                    <div id="follow-up-status" role="status" aria-live="polite"></div>
-                  </form>
-                </details>
+
               </div>
             </div>
           </article>
+        </div>
+        </div>
+        <div id="inbox-comments-panel" role="tabpanel" aria-labelledby="inbox-comments-tab" hidden>
+          <div class="comments-toolbar">
+            <label>Channel<select id="comments-account-filter" aria-label="Comments channel"><option value="all">All connected channels</option></select></label>
+            <label>Status<select id="comments-status-filter"><option value="all">All comments</option><option value="unread">Unread</option><option value="unreplied">Needs reply</option><option value="replied">Replied</option></select></label>
+            <input id="comments-search" type="search" placeholder="Search comments" aria-label="Search comments">
+            <button id="comments-sync" class="secondary-btn" type="button">Sync comments</button>
+          </div>
+          <p class="comments-context">Replies are public and sent from the channel that received the comment. Instagram DMs still use the 24-hour window. YouTube Shorts comment links are not clickable.</p>
+          <div id="comments-status" role="status" aria-live="polite"></div>
+          <div class="comments-selection"><label><input id="comments-select-all" type="checkbox"> Select visible comments</label><span id="comments-selected-count">0 selected</span><button id="comments-mark-read" class="text-btn" type="button">Mark read</button></div>
+          <div id="comments-list" class="comments-list"></div>
+          <button id="comments-more" class="secondary-btn" type="button" hidden>Load older comments</button>
+          <form id="comments-reply-form" class="card comments-composer">
+            <label for="comments-reply-text">Reply to selected comments</label>
+            <textarea id="comments-reply-text" rows="3" maxlength="2000" placeholder="Write a public reply…" required></textarea>
+            <button id="comments-review" class="primary-btn" type="submit">Review replies</button>
+          </form>
+          <div id="comments-review-panel" class="card comments-review" hidden>
+            <h3>Review public replies</h3><div id="comments-review-targets"></div><blockquote id="comments-review-message"></blockquote>
+            <button id="comments-send" class="primary-btn" type="button">Send replies</button><button id="comments-cancel" class="text-btn" type="button">Cancel</button>
+          </div>
         </div>
       </section>
 
@@ -468,7 +494,7 @@
         <div class="section-top"><div><h2>Lead Pipeline</h2><p>Leads and conversations stay saved when a messaging window closes.</p></div></div>
         <div class="lead-follow-up-filters">
           <label>Messaging<select id="lead-messaging-filter"><option value="all">All leads</option><option value="open">DM open</option><option value="expiring">Closes within 4 hours</option><option value="closed">Re-engagement needed</option><option value="human">Human support only</option><option value="unavailable">Channel unavailable</option></select></label>
-          <label>Follow-up<select id="lead-follow-up-filter"><option value="all">All activity</option><option value="due">Follow-up due</option><option value="30">Not contacted for 30+ days</option><option value="planned">Saved follow-ups</option></select></label>
+
           <label class="lead-not-booked"><input id="lead-not-booked" type="checkbox"> Not booked</label>
         </div>
         <div id="leads-message" class="connector-message" role="status"></div>
@@ -764,6 +790,7 @@
   <script type="module" src="/content-table.js"></script>
   <script type="module" src="/content-chart.js"></script>
   <script type="module" src="/content-metrics.js"></script>
+  <script type="module" src="/social-comments.js"></script>
   <script type="module" src="/published-post-preview.js"></script>
   <script type="module" src="/clip-review.js"></script>
   <script type="module" src="/preset-preview.js"></script>

@@ -57,15 +57,16 @@ async function sync({force=false,silent=false}={}){
     });
 
     const content=await refreshContentOnly();
-    const latest=content.summary?.latest_metrics_at||result.refreshed_at;
+    if(force) await window.__alchemicChannelActivity?.refresh?.(true);
+    const latest=content.summary?.latest_metrics_at;
 
     const topError=result.errors?.[0]?.error||'';
     const reconnect=(result.analytics_accounts||[]).some(x=>x.status==='needs_reconnect');
 
-    if(result.failed){
+    if(result.failed || result.partial){
       const friendly=/YouTube read credential|refresh token missing|YouTube OAuth/i.test(topError)
         ? 'YouTube connection required'
-        : `${result.failed} posts need attention`;
+        : `${(result.failed||0)+(result.partial||0)} posts need attention`;
       status(
         `${result.updated||0} refreshed · ${friendly}`,
         'warning',
@@ -80,7 +81,7 @@ async function sync({force=false,silent=false}={}){
     }else if(result.updated){
       status(`${result.updated} posts refreshed`,'success');
     }else{
-      status(timeLabel(latest),'success');
+      status(timeLabel(latest),latest?'success':'warning');
     }
   }catch(error){
     status('Metrics sync failed','error',error.message);
