@@ -20,7 +20,6 @@ function renderLeads() {
     }
   }
   const messaging=document.getElementById('lead-messaging-filter').value;
-  const followUp=document.getElementById('lead-follow-up-filter').value;
   const notBooked=document.getElementById('lead-not-booked').checked;
   const now=Date.now();
   const rows = [...unique.values()].filter(lead=>{
@@ -32,13 +31,9 @@ function renderLeads() {
     if(messaging==='human' && e.state!=='HUMAN_AGENT') return false;
     if(messaging==='unavailable' && !['UNSUPPORTED','DISCONNECTED'].includes(e.state)) return false;
     if(notBooked && ['booked','client'].includes(lead.lead_status)) return false;
-    if(followUp==='due' && (!lead.follow_up || Date.parse(lead.follow_up.due_at)>now)) return false;
-    if(followUp==='planned' && !lead.follow_up) return false;
-    if(followUp==='30' && (!lead.last_outbound_at || now-Date.parse(lead.last_outbound_at)<30*86400000)) return false;
     return true;
   }).sort((a,b)=>{
     if(messaging==='expiring') return Date.parse(a.messaging_eligibility.expires_at)-Date.parse(b.messaging_eligibility.expires_at);
-    if(followUp==='due') return Date.parse(a.follow_up.due_at)-Date.parse(b.follow_up.due_at);
     return 0;
   });
   for (const stage of stages) {
@@ -53,7 +48,6 @@ function renderLeads() {
         <div class="lead-card-account">@${app.esc(lead.account_username || 'account')}${lead.lead_status === 'registered' ? ' · Registered' : ''}</div>
         ${lead.total_unread ? `<div class="lead-unread"><span class="lead-unread-dot" aria-hidden="true"></span>${lead.total_unread} unread message${lead.total_unread === 1 ? '' : 's'}</div>` : ''}
         <div class="lead-messaging-state" data-state="${app.esc(lead.messaging_eligibility?.state||'UNKNOWN')}">${app.esc(eligibilityLabel(lead.messaging_eligibility))}</div>
-        ${lead.follow_up?`<div class="lead-follow-up-date">Follow-up ${Date.parse(lead.follow_up.due_at)<=now?'due':'saved'} · ${app.esc(new Date(lead.follow_up.due_at).toLocaleString())}</div>`:''}
         <p>${app.esc(String(lead.last_message || 'No recent message').slice(0, 110))}</p>
         <div class="lead-card-actions">
           <button class="text-btn lead-open" type="button">Open chat</button>
@@ -110,7 +104,7 @@ async function loadLeads() {
 }
 
 window.loadAlchemicLeads = loadLeads;
-for(const id of ['lead-messaging-filter','lead-follow-up-filter','lead-not-booked']) document.getElementById(id).addEventListener('change',renderLeads);
+for(const id of ['lead-messaging-filter','lead-not-booked']) document.getElementById(id).addEventListener('change',renderLeads);
 document.getElementById('lead-stage-filter').addEventListener('change', applyMobileStage);
 document.getElementById('lead-board').addEventListener('change', (event) => {
   if (!event.target.matches('.lead-move')) return;

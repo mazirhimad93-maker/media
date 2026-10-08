@@ -1,30 +1,26 @@
-import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import {jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest} from './_shared.mjs';
 
-export async function saveFollowUp(conversationId, workspaceId, input, db = supabaseRequest) {
-  const draft=String(input.draft||'').trim();
-  const dueAt=input.dueAt?new Date(input.dueAt):null;
-  if(draft.length>5000 || (dueAt && !Number.isFinite(dueAt.getTime()))) throw Object.assign(new Error('Choose a valid follow-up date and a draft under 5,000 characters.'),{status:400});
-  if(!input.clear && (!draft || !dueAt)) throw Object.assign(new Error('Add a message and follow-up date.'),{status:400});
-  const base=scopedPath('social_conversations?id=eq.'+encodeURIComponent(conversationId),workspaceId);
-  for(let attempt=0;attempt<3;attempt++){
-    const conversation=(await db(base+'&select=id,metadata&limit=1'))?.[0];
-    if(!conversation) throw Object.assign(new Error('Conversation not found'),{status:404});
-    const metadata=conversation.metadata||{};
-    const followUp=input.clear?null:{draft,due_at:dueAt.toISOString(),saved_at:new Date().toISOString()};
-    const changed=await db(base+'&metadata=eq.'+encodeURIComponent(JSON.stringify(metadata))+'&select=id',{
-      method:'PATCH',headers:{Prefer:'return=representation'},body:{metadata:{...metadata,follow_up:followUp},updated_at:new Date().toISOString()}
+// Retired feature. Only workspace-scoped cleanup remains.
+export async function removeSavedFollowUps(workspaceId,db=supabaseRequest) {
+  if(!workspaceId) throw Object.assign(new Error('Workspace required'),{status:400});
+  const rows=await db(scopedPath('social_conversations?metadata->follow_up=not.is.null&select=id,metadata&limit=100',workspaceId));
+  let removed=0;
+  for(const row of rows || []) {
+    const {follow_up,...metadata}=row.metadata || {};
+    const changed=await db(scopedPath('social_conversations?id=eq.'+encodeURIComponent(row.id)+'&metadata=eq.'+encodeURIComponent(JSON.stringify(row.metadata))+'&select=id',workspaceId),{
+      method:'PATCH',headers:{Prefer:'return=representation'},body:{metadata,updated_at:new Date().toISOString()}
     });
-    if(changed?.length) return {ok:true,follow_up:followUp};
+    if(changed?.length) removed++;
   }
-  throw Object.assign(new Error('The conversation changed while saving. Try again.'),{status:409});
+  return {removed,more:(rows || []).length===100};
 }
-
 export default async request=>{
-  try{
+  try {
     const {workspaceId}=await requireWorkspace(request);
-    if(request.method!=='POST') throw Object.assign(new Error('POST required'),{status:405});
-    const input=await request.json();
-    if(!input.conversationId) throw Object.assign(new Error('conversationId required'),{status:400});
-    return jsonResponse(await saveFollowUp(String(input.conversationId),workspaceId,input));
-  }catch(error){return publicError(error,error.status||500);}
+    if(request.method==='POST') {
+      const input=await request.json().catch(()=>({}));
+      if(input.action==='removeSavedFollowUps') return jsonResponse(await removeSavedFollowUps(workspaceId));
+    }
+    return jsonResponse({error:'DM follow-up sequences have been removed.'},410);
+  }catch(error){return publicError(error,error.status || 500);}
 };

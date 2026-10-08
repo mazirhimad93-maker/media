@@ -12,6 +12,15 @@
   schedule = "0 * * * *"
 
 [[redirects]]
+  from = "/api/channels/activity"
+  to = "/.netlify/functions/channel-activity"
+  status = 200
+[[redirects]]
+  from = "/api/social/comments"
+  to = "/.netlify/functions/social-comments"
+  status = 200
+
+[[redirects]]
   from = "/api/auth/login"
   to = "/.netlify/functions/auth-login"
   status = 200

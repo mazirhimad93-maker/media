@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { messagingEligibility, latestInboundDm, eligibilityLabel } from '../public/messaging-policy.js';
 import { assertMessagingAllowed } from '../netlify/functions/_messaging-eligibility.mjs';
-import { saveFollowUp } from '../netlify/functions/social-follow-up.mjs';
 
 const now=Date.parse('2026-10-03T20:00:00Z');
 const hour=3600000;
@@ -50,16 +49,4 @@ test('provider rejection blocks until a newer inbound DM; unsupported lanes fail
   assert.equal(messagingEligibility({...context,latestInbound:now-1000,metadata}).can_send,true);
   assert.equal(messagingEligibility({...context,platform:'tiktok',latestInbound:now-1000}).state,'UNSUPPORTED');
   assert.equal(messagingEligibility({...context,latestInbound:now-1000,account:{metadata:{disconnected_at:'date'}}}).state,'DISCONNECTED');
-});
-test('a saved follow-up preserves the lead and metadata without creating an outbound job',async()=>{
-  const calls=[];
-  const db=async(path,options)=>{
-    calls.push({path,options});
-    return options?[{id:'conversation-1'}]:[{id:'conversation-1',metadata:{source:'training'}}];
-  };
-  const result=await saveFollowUp('conversation-1','workspace-1',{draft:'Checking in',dueAt:'2026-11-03T20:00:00Z'},db);
-  assert.equal(result.follow_up.draft,'Checking in');
-  assert.ok(calls.every(c=>c.path.includes('workspace_id=eq.workspace-1')));
-  assert.equal(calls[1].options.body.metadata.source,'training');
-  assert.equal(calls.some(c=>c.path.startsWith('social_outbox')),false);
 });

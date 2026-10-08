@@ -1,4 +1,4 @@
-import { assignmentFromState, callbacks, htmlResponse, successPage, supabaseRequest, upsertConnectedAccount, verifyOAuthState } from './_shared.mjs';
+import { assignmentFromState, callbacks, htmlResponse, successPage, supabaseRequest, reconnectAccount, upsertConnectedAccount, verifyOAuthState } from './_shared.mjs';
 const failPage = (message) => htmlResponse(successPage({ title: 'YouTube connection failed', message }), 400);
 
 export default async (request) => {
@@ -21,6 +21,11 @@ export default async (request) => {
     if (!channelData.items?.length) throw new Error('This Google identity does not have an accessible YouTube channel');
     const expiresAt = new Date(Date.now() + Number(token.expires_in || 3600) * 1000).toISOString();
     const connected=[];
+    if(state.reconnectAccountId) {
+      const requested=await reconnectAccount(state,'youtube_shorts');
+      if(!channelData.items.some(c=>String(c.id)===String(requested.platform_account_id))) throw new Error('Select the YouTube channel you are reconnecting.');
+      channelData.items=channelData.items.filter(c=>String(c.id)===String(requested.platform_account_id));
+    }
     for (const channel of channelData.items) {
       const existing = await supabaseRequest(`content_accounts?platform=eq.youtube_shorts&platform_account_id=eq.${encodeURIComponent(channel.id)}&select=refresh_token&limit=1`);
       const refreshToken = token.refresh_token || existing?.[0]?.refresh_token;
@@ -29,9 +34,9 @@ export default async (request) => {
         platform:'youtube_shorts', platform_account_id:channel.id, username:channel.snippet?.customUrl || channel.snippet?.title || channel.id,
         display_name:channel.snippet?.title || channel.id, status:'active', is_active:true, health_status:'healthy', access_token:token.access_token,
         refresh_token:refreshToken, token_type:token.token_type || 'Bearer', token_expires_at:expiresAt,
-        scope:token.scope || 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly',
+        scope:token.scope || '',
         daily_limit:state.dailyLimit, weekly_limit:state.weeklyLimit, min_gap_minutes:state.minGapMinutes,
-        error_message:null, capabilities_json:{publish:true,analytics:true,comments_read:true},
+        error_message:null, capabilities_json:{publish:/youtube.upload|youtube.force-ssl/.test(token.scope || ''),analytics:/yt-analytics.readonly/.test(token.scope || ''),comments_read:/youtube.readonly|youtube.force-ssl/.test(token.scope || ''),comments_write:/youtube.force-ssl/.test(token.scope || '')},
         settings_json:{google_client_id:process.env.GOOGLE_CLIENT_ID.trim(), youtube_privacy_status:'public', youtube_category_id:'22', youtube_notify_subscribers:true},
         metadata:{oauth_provider:'google', connected_at:new Date().toISOString(), channel_status:channel.status || {}}
       }, assignmentFromState(state));

@@ -501,7 +501,7 @@ function updateComposerState(result = media.state.inbox.conversation || {}) {
   }
   if(input){
     input.disabled=false;
-    input.placeholder=state.locked?'Draft a message for later…':state.privateReply?'Private reply to comment…':'Message…';
+    input.placeholder=state.locked?'Waiting for their next message…':state.privateReply?'Private reply to comment…':'Message…';
   }
   if(submit) submit.disabled=state.locked||replyBusy;
   if(file) file.disabled=state.locked||state.privateReply;
@@ -562,7 +562,6 @@ async function refreshConversation() {
       const result = await media.api('/api/conversation?id=' + encodeURIComponent(id));
       if (media.state.inbox.selected?.id !== id || media.state.view !== 'inbox' || !document.querySelector('.inbox-layout')?.classList.contains('show-thread')) return;
       media.state.inbox.conversation = result;
-      renderFollowUp(result);
       $('conversation-lead-status').value = result.conversation?.lead_status || 'new';
       updateComposerState(result);
       renderConversation();
@@ -592,9 +591,6 @@ async function openInboxThread(row) {
     clearAttachment();
     $('conversation-reply-body').value = '';
     $('human-support-reply').checked=false;
-    $('follow-up-form').reset();
-    $('follow-up-status').textContent='';
-    $('follow-up-panel').open=false;
     resizeComposer();
     $('conversation-messages').innerHTML = '<div class="empty-list">Loading conversation…</div>';
   }
@@ -852,35 +848,6 @@ function resizeComposer() {
   input.style.height = `${Math.min(96, Math.max(42, input.scrollHeight))}px`;
 }
 
-function renderFollowUp(result) {
-  const followUp=result.follow_up;
-  const status=$('follow-up-status');
-  status.textContent=followUp?'Saved for '+new Date(followUp.due_at).toLocaleString()+' · manual review before sending':'';
-  if(!followUp || $('follow-up-panel').open) return;
-  $('follow-up-draft').value=followUp.draft;
-  const date=new Date(followUp.due_at);
-  $('follow-up-date').value=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
-}
-
-async function saveFollowUp(event, clear=false) {
-  event?.preventDefault();
-  const conversationId=media.state.inbox.selected?.id;
-  if(!conversationId) return;
-  const button=$('follow-up-form').querySelector('[type="submit"]');
-  button.disabled=true;
-  try{
-    const value=$('follow-up-date').value;
-    const result=await media.api('/api/social/follow-up',{method:'POST',body:{conversationId,clear,
-      draft:$('follow-up-draft').value,dueAt:value?new Date(value).toISOString():null}});
-    if(media.state.inbox.selected?.id!==conversationId) return;
-    media.state.inbox.conversation.follow_up=result.follow_up;
-    $('follow-up-status').textContent=clear?'Follow-up cleared.':'Follow-up saved · no message sent.';
-    if(clear) $('follow-up-form').reset();
-    window.loadAlchemicLeads?.();
-  }catch(error){$('follow-up-status').textContent=error.message;}
-  finally{button.disabled=false;}
-}
-
 function bindUi() {
   $('auth-tab-login').addEventListener('click', () => setAuthMode('login'));
   $('auth-tab-register').addEventListener('click', () => setAuthMode('register'));
@@ -893,15 +860,6 @@ function bindUi() {
   });
 
   $('human-support-reply').addEventListener('change',()=>updateComposerState());
-  $('follow-up-form').addEventListener('submit',saveFollowUp);
-  $('follow-up-clear').addEventListener('click',()=>saveFollowUp(null,true));
-  $('follow-up-load').addEventListener('click',()=>{
-    $('conversation-reply-body').value=$('follow-up-draft').value;
-    resizeComposer(); updateComposerState(); $('conversation-reply-body').focus();
-  });
-  $('follow-up-panel').addEventListener('toggle',()=>{
-    if($('follow-up-panel').open && !$('follow-up-draft').value) $('follow-up-draft').value=$('conversation-reply-body').value;
-  });
   $('refresh-inbox').addEventListener('click', () => syncInboxAccounts({ silent:false }));
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);

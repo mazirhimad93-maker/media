@@ -33,7 +33,7 @@ function youtubeVideoId(post){
   return m?.[1]||raw;
 }
 
-async function refreshYouTube(account){
+export async function refreshYouTube(account){
   if(account?.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
   if(!account?.refresh_token) throw new Error('YouTube refresh token missing');
 
@@ -130,7 +130,7 @@ async function youtubeDailyAnalytics(items,workspaceId){
   const rows=[];
   for(let i=0;i<items.length;i+=100){
     const batch=items.slice(i,i+100);
-    const byVideo=new Map(batch.map(x=>[String(x.post.external_post_id),x]));
+    const byVideo=new Map(batch.map(x=>[youtubeVideoId(x.post),x]));
 
     const url=new URL('https://youtubeanalytics.googleapis.com/v2/reports');
     url.search=new URLSearchParams({
@@ -335,15 +335,23 @@ async function facebookMetrics(post,account){
   return out;
 }
 
-function refreshAfterMinutes(){
-  // Platform metrics are intentionally sampled once per 24 hours.
-  // The scheduled worker may wake up more often, but it will not call
-  // Instagram/YouTube/Facebook until this per-post interval has elapsed.
-  return 1440;
+export function refreshAfterMinutes(){
+  return 60;
+}
+export function metricsAreDue(publishedAt, latest, force=false, now=Date.now()) {
+  // Manual sync and new posts fetch real provider counts immediately.
+  return force || !latest?.captured_at || now-Date.parse(latest.captured_at)>=refreshAfterMinutes()*60000;
 }
 
 async function metricsFor(post,account){
-  if(account.platform==='instagram_reels') return instagramMetrics(post,account);
+  if(account.platform==='instagram_reels') {
+    const resolved=await resolveInstagramMedia(post,account);
+    if(String(resolved.id)!==String(post.external_post_id)) {
+      post.external_post_id=String(resolved.id);
+      await supabaseRequest('content_publish_queue?id=eq.'+encodeURIComponent(post.id),{method:'PATCH',body:{external_post_id:post.external_post_id}});
+    }
+    return instagramMetrics(post,account);
+  }
   if(account.platform==='facebook_page'||account.platform==='facebook') return facebookMetrics(post,account);
   throw Object.assign(new Error('Metrics not supported for '+account.platform),{unsupported:true});
 }
@@ -356,19 +364,19 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     supabaseRequest(scopedPath(
       'content_publish_queue?external_post_id=not.is.null&select=id,asset_id,platform,external_post_id,external_post_url,selected_account_id,account_id,status,finished_at,created_at&order=finished_at.desc.nullslast&limit='+limit,
       workspaceId
-    )).catch(()=>[]),
+    )),
     supabaseRequest(scopedPath(
       'content_history?event_type=eq.published&select=id,queue_id,account_id,platform,created_at&order=created_at.desc&limit=10000',
       workspaceId
-    )).catch(()=>[]),
+    )),
     supabaseRequest(scopedPath(
       'content_accounts?select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,scope,settings_json&limit=3000',
       workspaceId
-    )).catch(()=>[]),
+    )),
     supabaseRequest(scopedPath(
       'post_metrics_snapshots?select=id,history_id,captured_at,views,likes,comments,shares,saves&order=captured_at.desc&limit=20000',
       workspaceId
-    )).catch(()=>[])
+    ))
   ]);
 
   const historyByQueue=new Map();
@@ -395,37 +403,10 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
     }
 
     const latest=latestByHistory.get(h.id);
-    const publishedAt=new Date(post.finished_at||post.created_at||Date.now()).getTime();
-    const postAgeMinutes=Math.max(0,(Date.now()-publishedAt)/60000);
-
-    // Never touch a platform's metrics endpoint during the first 24 hours
-    // after publishing. This quiet period is absolute, including manual Sync now.
-    if(!latest?.captured_at && postAgeMinutes<1440){
-      results.push({
-        queue_id:post.id,
-        history_id:h.id,
-        platform:account.platform,
-        status:'fresh',
-        reason:'waiting_first_24h',
-        eligible_at:new Date(publishedAt+1440*60000).toISOString()
-      });
+    if(!metricsAreDue(post.finished_at,latest,force)){
+      results.push({queue_id:post.id,history_id:h.id,platform:account.platform,status:'fresh',
+        captured_at:latest.captured_at,eligible_at:new Date(Date.parse(latest.captured_at)+refreshAfterMinutes()*60000).toISOString()});
       continue;
-    }
-
-    if(!force&&latest?.captured_at){
-      const minutesOld=(Date.now()-new Date(latest.captured_at).getTime())/60000;
-      if(minutesOld<refreshAfterMinutes(post)){
-        results.push({
-          queue_id:post.id,
-          history_id:h.id,
-          platform:account.platform,
-          status:'fresh',
-          reason:'waiting_next_24h',
-          captured_at:latest.captured_at,
-          eligible_at:new Date(new Date(latest.captured_at).getTime()+1440*60000).toISOString()
-        });
-        continue;
-      }
     }
 
     if(due.length>=maxUpdates){
@@ -439,6 +420,13 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
   const snapshotRows=[];
   const success=(item,m)=>{
     const capturedAt=nowIso();
+    if(m.partial) {
+      // Do not replace previously measured views with zero when Insights fails.
+      // Report partial basic counts without claiming a refreshed views snapshot.
+      results.push({history_id:item.h.id,queue_id:item.post.id,platform:item.account.platform,status:'partial',
+        warning:m.warning,views:null,likes:m.likes,comments:m.comments,captured_at:null});
+      return;
+    }
     snapshotRows.push({
       history_id:item.h.id,
       captured_at:capturedAt,

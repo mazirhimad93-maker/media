@@ -1437,7 +1437,7 @@ function renderAccounts(){
         : account.platform==='youtube_shorts'
           ? (account.insights_permission
               ? '<span class="status-chip status-approved">Daily analytics</span>'
-              : '<span class="status-chip status-other">Totals only</span>')
+              : '<span class="status-chip status-other">Totals only</span>')+`<button class="reconnect-channel-btn open-btn" data-id="${esc(account.id)}" type="button">Reconnect permissions</button>`
           : '—';
 
       return `
@@ -1489,8 +1489,8 @@ function renderAccounts(){
 function reconnectChannel(accountId){
   const account=(state.data?.accounts||[]).find(a=>a.id===accountId);
   if(!account){channelActionMessage('Channel not found. Refresh and try again.','error');return;}
-  const provider=account.platform==='instagram_reels'?'instagram':account.platform==='facebook_page'||account.platform==='facebook'?'facebook':null;
-  if(!provider){channelActionMessage('DM reconnect is only available for Instagram and Facebook Pages.','error');return;}
+  const provider=account.platform==='instagram_reels'?'instagram':account.platform==='facebook_page'||account.platform==='facebook'?'facebook':account.platform==='youtube_shorts'?'youtube':null;
+  if(!provider){channelActionMessage('Reconnect is available for Instagram, Facebook Pages and YouTube.','error');return;}
   return startConnector(provider,accountId);
 }
 
