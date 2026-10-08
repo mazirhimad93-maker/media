@@ -52,13 +52,18 @@ async function sync({force=false,silent=false}={}){
       body:{
         limit:400,
         maxUpdates:force?250:80,
-        force
+        force,
+        platform:$('content-platform-filter')?.value==='all'?null:$('content-platform-filter')?.value||null
       }
     });
 
     const content=await refreshContentOnly();
     if(force) await window.__alchemicChannelActivity?.refresh?.(true);
     const latest=content.summary?.latest_metrics_at;
+    if(content.warnings?.length) {
+      status('Some analytics sections could not be loaded','warning',content.warnings.map(x=>x.section).join(', '));
+      return;
+    }
 
     const topError=result.errors?.[0]?.error||'';
     const reconnect=(result.analytics_accounts||[]).some(x=>x.status==='needs_reconnect');

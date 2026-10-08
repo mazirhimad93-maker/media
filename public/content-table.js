@@ -125,12 +125,12 @@ function render(){
   const resultValue=platform==='youtube_shorts'?clicks:(platform==='all'?clicks+dms:dms);
   badge();renderManager();renderHead();
   $('content-summary').innerHTML=[
-    ['Views',views,'orange','◉'],
+    ['Lifetime Views',pub.length&&!pub.some(row=>row.views_available)?'Unavailable':views,'orange','◉'],
     [resultLabel,resultValue,'purple','◆'],
     ['Published Clips',pub.length,'green','▤'],
     ['Engagements',eng,'cyan','↗']
-  ].map(x=>`<div class="stat-card whop-stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${fmt(x[1])}</strong><span>${esc(x[0])}</span></div></div>`).join('');
-  const cols=visible(); $('content-table-meta').textContent=`${rows.length} rows · ${cols.length} visible columns · drag headers to reorder`;
+  ].map(x=>`<div class="stat-card whop-stat-card"><div class="stat-icon ${x[2]}">${x[3]}</div><div><strong>${typeof x[1]==='number'?fmt(x[1]):esc(x[1])}</strong><span>${esc(x[0])}</span></div></div>`).join('');
+  const cols=visible(); $('content-table-meta').textContent=`${rows.length} rows · ${pub.filter(x=>x.views_available).length} posts with measured views · lifetime totals for posts published in the selected dates`;
   $('content-table').innerHTML=rows.length?rows.map(r=>'<tr>'+cols.map(x=>`<td data-column="${x.key}" style="width:${x.width}px;min-width:${x.width}px;max-width:${x.width}px">${cell(r,x.key)}</td>`).join('')+'</tr>').join(''):`<tr><td class="empty-row" colspan="${Math.max(1,cols.length)}">No content matches the current filters.</td></tr>`;
   $('content-mobile-list').innerHTML=rows.length?rows.map(r=>`
     <article class="content-mobile-card">

@@ -83,28 +83,6 @@ function rangeBounds(rows,points){
   return {start,end};
 }
 
-function preferredReconcileDay(metric,rows,points,bounds){
-  const candidates=[];
-
-  if(metric==='results'){
-    for(const point of points){
-      if(pointValue(point,metric)<=0) continue;
-      const d=new Date(point.occurred_at||point.captured_at||0);
-      if(!Number.isNaN(d.getTime())) candidates.push(d.getTime());
-    }
-  }else{
-    for(const row of rows){
-      if(rowValue(row,metric)<=0) continue;
-      const d=new Date(row.metrics_captured_at||row.finished_at||row.created_at||0);
-      if(!Number.isNaN(d.getTime())) candidates.push(d.getTime());
-    }
-  }
-
-  const raw=candidates.length?new Date(Math.max(...candidates)):bounds.end;
-  const clamped=new Date(Math.min(bounds.end.getTime(),Math.max(bounds.start.getTime(),raw.getTime())));
-  return dayKey(clamped)||dayKey(bounds.end);
-}
-
 function buildSeries(metric){
   const rows=currentRows();
   const points=filteredPoints();
@@ -126,17 +104,9 @@ function buildSeries(metric){
   const knownTotal=[...map.values()].reduce((sum,value)=>sum+Number(value||0),0);
   const currentTotal=currentMetricTotal(metric);
 
-  // The content cards use the latest platform totals, while historical points
-  // are sampled every 24h. If the first/current snapshot has not yet appeared
-  // as a delta point, reconcile that measured balance on its snapshot day.
-  // This keeps the graph truthful and guarantees the curve reaches the same
-  // current total shown by the Content page.
-  const targetTotal=Math.max(knownTotal,currentTotal);
-  const remainder=Math.max(0,targetTotal-knownTotal);
-  if(remainder>0){
-    const key=preferredReconcileDay(metric,rows,points,bounds);
-    map.set(key,(map.get(key)||0)+remainder);
-  }
+  // A lifetime balance is not activity gained inside the selected dates.
+  // Plot only provider daily counts or increases observed after a baseline.
+  const targetTotal=knownTotal;
 
   const out=[];
   let running=0;
@@ -278,7 +248,7 @@ function render(){
   const subtitle=$('content-chart-subtitle');
   if(subtitle){
     subtitle.textContent=rows.length
-      ? `${ui.mode==='daily'?'Daily':'Cumulative'} ${String(metricLabels[metric]||metric).toLowerCase()} across ${rows.length} matching posts`
+      ? `${ui.mode==='daily'?'Daily':'Cumulative'} ${metric==='results'?'results':'recorded growth'} across ${rows.length} matching posts${metric==='results'?'':'. Cards show current lifetime totals; the chart shows provider daily data or measured increases after the first snapshot.'}`
       : 'Performance history will appear here as platform metrics are collected.';
   }
 

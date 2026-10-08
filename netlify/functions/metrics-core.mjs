@@ -1,4 +1,5 @@
 import { scopedPath, supabaseRequest } from './_shared.mjs';
+import { loadLatestMetrics } from './_analytics-read.mjs';
 
 const nowIso=()=>new Date().toISOString();
 const num=v=>Math.max(0,Number(v||0));
@@ -281,11 +282,16 @@ async function instagramMetrics(post,account){
 
   const values={};
   for(const item of insights.data||[]){
-    const value=item.values?.[0]?.value ?? item.total_value?.value ?? 0;
-    values[item.name]=num(value);
+    const value=item.values?.[0]?.value ?? item.total_value?.value;
+    if(value!==undefined&&value!==null) values[item.name]=num(value);
   }
 
   out.views=num(values.views);
+  if(values.views===undefined){
+    out.partial=true;
+    out.warning='Instagram did not return the views metric. The previous measured count was retained.';
+    return out;
+  }
   out.likes=values.likes!==undefined?num(values.likes):out.likes;
   out.comments=values.comments!==undefined?num(values.comments):out.comments;
   out.saves=num(values.saved);
@@ -356,13 +362,13 @@ async function metricsFor(post,account){
   throw Object.assign(new Error('Metrics not supported for '+account.platform),{unsupported:true});
 }
 
-export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,maxUpdates=300}={}){
+export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,maxUpdates=300,platform=null}={}){
   limit=Math.min(500,Math.max(1,Number(limit||300)));
   maxUpdates=Math.min(500,Math.max(1,Number(maxUpdates||limit)));
 
   const [posts,history,accounts,snapshots]=await Promise.all([
     supabaseRequest(scopedPath(
-      'content_publish_queue?external_post_id=not.is.null&select=id,asset_id,platform,external_post_id,external_post_url,selected_account_id,account_id,status,finished_at,created_at&order=finished_at.desc.nullslast&limit='+limit,
+      'content_publish_queue?external_post_id=not.is.null'+(platform?'&platform=eq.'+encodeURIComponent(platform):'')+'&select=id,asset_id,platform,external_post_id,external_post_url,selected_account_id,account_id,status,finished_at,created_at&order=finished_at.desc.nullslast&limit='+limit,
       workspaceId
     )),
     supabaseRequest(scopedPath(
@@ -373,10 +379,7 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
       'content_accounts?select=id,platform,platform_account_id,access_token,refresh_token,token_expires_at,scope,settings_json&limit=3000',
       workspaceId
     )),
-    supabaseRequest(scopedPath(
-      'post_metrics_snapshots?select=id,history_id,captured_at,views,likes,comments,shares,saves&order=captured_at.desc&limit=20000',
-      workspaceId
-    ))
+    loadLatestMetrics(workspaceId)
   ]);
 
   const historyByQueue=new Map();
@@ -535,8 +538,6 @@ export async function syncWorkspaceMetrics(workspaceId,{limit=300,force=false,ma
           method:'POST',
           headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
           body:daily.rows
-        }).catch(error=>{
-          if(!/post_daily_metrics/i.test(String(error?.message||''))) throw error;
         });
         dailyRows+=daily.rows.length;
       }

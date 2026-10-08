@@ -101,7 +101,7 @@ test('retiring follow-ups removes only saved drafts and keeps CRM and policy met
   assert.ok(calls.every(c=>!c.path.startsWith('social_outbox')));
 });
 
-test('missing Instagram Insights does not overwrite an existing real views snapshot',async()=>{
+for(const [reason,insightsResponse] of [['permission',()=>new Response(JSON.stringify({error:{message:'Missing Insights permission'}}),{status:403})],['missing views metric',()=>response({data:[{name:'comments',values:[{value:2}]}]})]]) test(`Instagram ${reason} does not overwrite an existing real views snapshot`,async()=>{
   process.env.SUPABASE_URL='https://test.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='sb_secret_test';
   const original=globalThis.fetch;let snapshotWrites=0;
   globalThis.fetch=async(url,options={})=>{
@@ -110,7 +110,8 @@ test('missing Instagram Insights does not overwrite an existing real views snaps
     if(value.includes('/content_history?'))return response([{id:'h',queue_id:'q',account_id:'ig'}]);
     if(value.includes('/content_accounts?'))return response([instagram]);
     if(value.includes('/post_metrics_snapshots?'))return response([{history_id:'h',views:1024,captured_at:'2026-10-01T00:00:00Z'}]);
-    if(value.includes('/insights?'))return new Response(JSON.stringify({error:{message:'Missing Insights permission'}}),{status:403});
+    if(value.includes('/v_media_latest_post_metrics?'))return new Response(JSON.stringify({message:'v_media_latest_post_metrics not found in schema cache'}),{status:404});
+    if(value.includes('/insights?'))return insightsResponse();
     if(value.includes('graph.instagram.com'))return response({id:'m',like_count:5,comments_count:2});
     if(value.endsWith('/post_metrics_snapshots')){snapshotWrites++;return response([]);}
     throw new Error('Unexpected request '+value);
