@@ -1,22 +1,22 @@
 import { jsonResponse, publicError, requireWorkspace, scopedPath, supabaseRequest } from './_shared.mjs';
+import { readAllRows,loadLatestMetrics } from './_analytics-read.mjs';
+import { campaignGroupKey } from './_campaign-groups.mjs';
 
-const safe=async path=>supabaseRequest(path).catch(()=>[]);
-
-export default async (request) => {
-  try{
-    const {workspaceId}=await requireWorkspace(request);
+export async function loadCampaigns(workspaceId,db=supabaseRequest){
+    const read=path=>readAllRows(path,{db});
+    const safe=async path=>read(path).catch(()=>[]);
 
     const [contentCampaigns,distributionCampaigns,pools,memberships,accounts,variants,assets,queue,history,metrics,links,clicks,conversations,messages]=await Promise.all([
-      safe(scopedPath('content_campaigns?select=*&limit=500',workspaceId)),
-      safe(scopedPath('distribution_campaigns?select=*&limit=500',workspaceId)),
+      read(scopedPath('content_campaigns?select=*&order=id.asc',workspaceId)),
+      read(scopedPath('distribution_campaigns?select=*&order=id.asc',workspaceId)),
       safe(scopedPath('content_distribution_pools?select=*&limit=500',workspaceId)),
       safe(scopedPath('content_distribution_pool_accounts?select=pool_id,account_id,is_active,priority,weight&limit=5000',workspaceId)),
       safe(scopedPath('content_accounts?select=id,platform,username,display_name,status,is_active&limit=3000',workspaceId)),
-      safe(scopedPath('clip_variants?select=id,campaign_id,status,created_at&limit=10000',workspaceId)),
-      safe(scopedPath('content_assets?select=id,campaign_id,clip_variant_id,media_publish_approved,publish_count,status,created_at&limit=10000',workspaceId)),
-      safe(scopedPath('content_publish_queue?select=id,campaign_id,asset_id,platform,status,external_post_id,external_post_url,selected_account_id,account_id,created_at,finished_at&limit=20000',workspaceId)),
-      safe(scopedPath('content_history?select=id,queue_id,campaign_id,account_id,event_type,created_at&order=created_at.desc&limit=25000',workspaceId)),
-      safe(scopedPath('post_metrics_snapshots?select=history_id,captured_at,views,likes,comments,shares,saves&order=captured_at.desc&limit=30000',workspaceId)),
+      read(scopedPath('clip_variants?select=id,campaign_id,status,created_at&order=id.asc',workspaceId)),
+      read(scopedPath('content_assets?select=id,campaign_id,clip_variant_id,media_publish_approved,publish_count,status,created_at&order=id.asc',workspaceId)),
+      read(scopedPath('content_publish_queue?select=id,campaign_id,asset_id,platform,status,external_post_id,external_post_url,selected_account_id,account_id,created_at,finished_at&order=id.asc',workspaceId)),
+      read(scopedPath('content_history?select=id,queue_id,campaign_id,account_id,event_type,created_at&event_type=eq.published&order=created_at.desc,id.desc',workspaceId)),
+      loadLatestMetrics(workspaceId,db),
       safe(scopedPath('tracked_links?select=id,campaign_id,asset_id,history_id&limit=10000',workspaceId)),
       safe(scopedPath('tracked_link_clicks?select=tracked_link_id,occurred_at&limit=30000',workspaceId)),
       safe(scopedPath('social_conversations?select=id,account_id,source_history_id,source_external_post_id,created_at&limit=10000',workspaceId)),
@@ -83,14 +83,6 @@ export default async (request) => {
       if(campaignId) messageCountByCampaign.set(campaignId,(messageCountByCampaign.get(campaignId)||0)+1);
     }
 
-    const classifyCampaign=(campaign)=>{
-      const hay=[campaign?.slug,campaign?.name,campaign?.metadata?.campaign_group,campaign?.metadata?.client]
-        .filter(Boolean).join(' ').toLowerCase();
-      if(/(^|\\b)(alchemic|alchemix)(\\b|$)/.test(hay)) return 'alchemic';
-      if(/(^|\\b)(zach|zack)(\\b|$)/.test(hay)) return 'zach';
-      return 'whoop';
-    };
-
     const groupDefs={
       alchemic:{id:'group:alchemic',name:'Alchemic',description:'Alchemic brand growth, case studies and acquisition media.'},
       zach:{id:'group:zach',name:'Zach',description:'Zach / Nanaki / Pet Influencer content and distribution.'},
@@ -102,12 +94,12 @@ export default async (request) => {
     }]));
 
     for(const campaign of contentCampaigns||[]){
-      const key=classifyCampaign(campaign);
+      const key=campaignGroupKey(campaign);
       campaignGroups.get(key).members.push(campaign);
       campaignGroups.get(key).contentMembers.push(campaign);
     }
     for(const campaign of distributionCampaigns||[]){
-      const key=classifyCampaign(campaign);
+      const key=campaignGroupKey(campaign);
       campaignGroups.get(key).members.push(campaign);
       campaignGroups.get(key).distributionMembers.push(campaign);
     }
@@ -129,7 +121,7 @@ export default async (request) => {
         const h=historyByQueue.get(q.id);
         const m=h?metricByHistory.get(h.id):null;
         if(!m) continue;
-        views+=Number(m.views||0);
+        if(q.platform!=='instagram_reels'||m.insights_ok===true||m.raw_json?.insights_ok===true) views+=Number(m.views||0);
         likes+=Number(m.likes||0);
         comments+=Number(m.comments||0);
         shares+=Number(m.shares||0);
@@ -181,7 +173,7 @@ export default async (request) => {
       return bt-at;
     });
 
-    return jsonResponse({
+    return {
       campaigns:rows,
       summary:{
         total:rows.length,
@@ -194,7 +186,13 @@ export default async (request) => {
         conversations:rows.reduce((n,x)=>n+x.conversations,0),
         messages:rows.reduce((n,x)=>n+x.messages,0)
       }
-    });
+    };
+}
+
+export default async request=>{
+  try{
+    const {workspaceId}=await requireWorkspace(request);
+    return jsonResponse(await loadCampaigns(workspaceId));
   }catch(error){
     return publicError(error,error.status||500);
   }

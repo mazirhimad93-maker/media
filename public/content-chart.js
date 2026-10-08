@@ -373,7 +373,6 @@ window.addEventListener('resize',()=>{if(state.view==='content') render();});
 
 const wait=setInterval(()=>{
   if(state.content){
-    if($('content-date-filter')&&$('content-date-filter').value==='all') $('content-date-filter').value='30';
     syncVisibleControls();
     render();
     clearInterval(wait);

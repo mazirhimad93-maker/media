@@ -11,7 +11,7 @@ export async function loadContentData(workspaceId, db=supabaseRequest) {
       catch(error){warnings.push({section:path.split('?')[0],error:'This analytics section could not be loaded.'});return [];}
     };
 
-    const [queue,assets,accounts,history,metricData,dailyMetrics,campaigns,links,clicks,conversations,messages] = await Promise.all([
+    const [queue,assets,accounts,history,metricData,dailyMetrics,contentCampaigns,distributionCampaigns,variants,links,clicks,conversations,messages] = await Promise.all([
       read(scopedPath('content_publish_queue?select=*&order=created_at.desc,id.desc',workspaceId)),
       read(scopedPath('content_assets?select=*&order=created_at.desc,id.desc',workspaceId)),
       read(scopedPath('content_accounts?select=id,platform,username,display_name,platform_account_id&order=id.asc',workspaceId)),
@@ -19,12 +19,16 @@ export async function loadContentData(workspaceId, db=supabaseRequest) {
       loadMetricData(workspaceId,db),
       optional(scopedPath('post_daily_metrics?select=*&order=metric_date.asc,id.asc',workspaceId)),
       read(scopedPath('content_campaigns?select=id,name,status&order=id.asc',workspaceId)),
+      read(scopedPath('distribution_campaigns?select=id,name,status&order=id.asc',workspaceId)),
+      read(scopedPath('clip_variants?select=id,campaign_id&order=id.asc',workspaceId)),
       optional(scopedPath('tracked_links?select=id,campaign_id,asset_id,history_id,account_id,slug,destination_url&order=id.asc',workspaceId)),
       optional(scopedPath('tracked_link_clicks?select=id,tracked_link_id,occurred_at&order=occurred_at.asc,id.asc',workspaceId)),
       optional(scopedPath('social_conversations?select=id,account_id,source_history_id,source_external_post_id,created_at,last_inbound_at,last_message_at&order=id.asc',workspaceId)),
       optional(scopedPath('social_messages?select=id,conversation_id,direction,message_type,sent_at,created_at&order=sent_at.asc,id.asc',workspaceId))
     ]);
     const metrics=metricData.latest;
+    const campaigns=[...new Map([...contentCampaigns,...distributionCampaigns].map(x=>[x.id,x])).values()];
+    const variantCampaign=new Map(variants.map(x=>[x.id,x.campaign_id]));
 
     const assetById=new Map((assets||[]).map(x=>[x.id,x]));
     const accountById=new Map((accounts||[]).map(x=>[x.id,x]));
@@ -101,7 +105,7 @@ export async function loadContentData(workspaceId, db=supabaseRequest) {
       const asset=assetById.get(q.asset_id)||{};
       const h=historyByQueue.get(q.id)||null;
       const account=accountById.get(h?.account_id||q.selected_account_id||q.account_id)||{};
-      const campaignId=q.campaign_id||asset.campaign_id||null;
+      const campaignId=q.campaign_id||asset.campaign_id||h?.campaign_id||variantCampaign.get(asset.clip_variant_id)||null;
       const campaign=campaignById.get(campaignId)||{};
       const m=h?latestMetricByHistory.get(h.id)||{}:{};
 

@@ -794,7 +794,7 @@ button{cursor:pointer}
 .content-platform-tab.active{background:#fff;color:#c2410c;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .content-range-wrap{display:flex;align-items:center;gap:8px}
 .content-range-wrap select{border:1px solid #d1d5db;background:#fff;border-radius:9px;padding:8px 11px;font-size:9px;color:#334155}
-.whop-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.whop-kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:0 0 10px}
 .whop-stat-card{box-shadow:none;border-color:#e7eaf0;border-radius:10px;padding:9px 11px;min-height:62px;gap:9px}
 .whop-stat-card .stat-icon{width:32px;height:32px;border-radius:8px;font-size:11px;flex:0 0 auto}
 .whop-stat-card strong{font-size:17px;line-height:1.05}

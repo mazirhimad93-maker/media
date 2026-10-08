@@ -46,17 +46,11 @@ function sortValue(r,k){
 }
 
 function filteredRows(){
-  const p=$('content-platform-filter')?.value||'all', s=$('content-status-filter')?.value||'all';
+  const p=$('content-platform-filter')?.value||'all', s=$('content-status-filter')?.value||'done';
   const c=$('content-campaign-filter')?.value||'all', d=$('content-date-filter')?.value||'all';
-  const cutoff=d==='all'?null:Date.now()-Number(d)*86400000;
+  const campaignIds=(state.campaigns?.campaigns||[]).find(x=>x.id===c)?.member_campaign_ids||[];
   const dir=ui.sortDir==='asc'?1:-1;
-  return (state.content?.rows||[]).filter(r=>{
-    if(p!=='all'&&r.platform!==p) return false;
-    if(s!=='all'&&r.status!==s) return false;
-    if(c!=='all'&&r.campaign_id!==c) return false;
-    if(cutoff&&new Date(r.finished_at||r.created_at||0).getTime()<cutoff) return false;
-    return true;
-  }).sort((a,b)=>{
+  return (state.content?.rows||[]).filter(r=>window.__alchemicContentFilters.matches(r,{platform:p,status:s,campaign:c,campaignIds,date:d})).sort((a,b)=>{
     const av=sortValue(a,ui.sortKey),bv=sortValue(b,ui.sortKey);
     return (typeof av==='number'&&typeof bv==='number'?(av-bv):String(av).localeCompare(String(bv),undefined,{numeric:true}))*dir;
   });
@@ -66,7 +60,7 @@ function cell(r,k){
   if(k==='content') return `<div class="content-name-cell"><strong>${esc(r.title||'Content')}</strong><span>${esc(r.campaign_name||'No campaign')}</span>${r.caption?`<small>${esc(r.caption.slice(0,150))}</small>`:''}</div>`;
   if(k==='platform') return `<span class="platform-chip">${esc(platformLabel(r.platform))}</span>`;
   if(k==='account') return esc(r.account_username||'—');
-  if(k==='status') return `<span class="status-chip ${statusClass(r.status)}">${esc(r.status||'—')}</span>`;
+  if(k==='status') return `<span class="status-chip ${statusClass(r.status)}">${esc(r.status==='done'?'Published':r.status||'—')}</span>`;
   if(['views','likes','comments','shares','saves','engagements'].includes(k)) return r[k]===null||r[k]===undefined ? '<span class="metric-unavailable" title="Metric not available with the current platform permission">—</span>' : fmt(r[k]);
   if(['link_clicks','inbound_dms','dm_threads'].includes(k)) return fmt(r[k]||0);
   if(k==='primary_result') return `<div class="primary-result-cell"><strong>${fmt(r.primary_result||0)}</strong><span>${esc(r.primary_result_label||'Result')}</span></div>`;
@@ -120,12 +114,19 @@ function render(){
   const eng=pub.reduce((n,x)=>n+Number(x.engagements||0),0);
   const clicks=pub.reduce((n,x)=>n+Number(x.link_clicks||0),0);
   const dms=pub.reduce((n,x)=>n+Number(x.inbound_dms||0),0);
+  const comments=pub.reduce((n,x)=>n+Number(x.comments||0),0);
+  // Use the same measured posts in both parts of the conversion ratio.
+  const comparable=pub.filter(x=>x.views!=null&&x.comments!=null);
+  const comparableViews=comparable.reduce((n,x)=>n+Number(x.views),0);
+  const commentRate=comparableViews>0?(comparable.reduce((n,x)=>n+Number(x.comments),0)/comparableViews*100).toFixed(2)+'%':'—';
   const platform=$('content-platform-filter')?.value||'all';
   const resultLabel=platform==='youtube_shorts'?'Link Clicks':platform==='instagram_reels'||platform==='facebook_page'||platform==='tiktok_video'||platform==='tiktok'?'DMs':'Primary Results';
   const resultValue=platform==='youtube_shorts'?clicks:(platform==='all'?clicks+dms:dms);
   badge();renderManager();renderHead();
   $('content-summary').innerHTML=[
     ['Lifetime Views',pub.length&&!pub.some(row=>row.views_available)?'Unavailable':views,'orange','◉'],
+    ['Comments',pub.length&&!pub.some(row=>row.comments!=null)?'Unavailable':comments,'blue','◌'],
+    ['Comments / Views',commentRate,'cyan','%'],
     [resultLabel,resultValue,'purple','◆'],
     ['Published Clips',pub.length,'green','▤'],
     ['Engagements',eng,'cyan','↗']
@@ -134,10 +135,10 @@ function render(){
   $('content-table').innerHTML=rows.length?rows.map(r=>'<tr>'+cols.map(x=>`<td data-column="${x.key}" style="width:${x.width}px;min-width:${x.width}px;max-width:${x.width}px">${cell(r,x.key)}</td>`).join('')+'</tr>').join(''):`<tr><td class="empty-row" colspan="${Math.max(1,cols.length)}">No content matches the current filters.</td></tr>`;
   $('content-mobile-list').innerHTML=rows.length?rows.map(r=>`
     <article class="content-mobile-card">
-      <div class="content-mobile-card-top"><span class="platform-chip">${esc(platformLabel(r.platform))}</span><span class="status-chip ${statusClass(r.status)}">${esc(r.status||'—')}</span></div>
+      <div class="content-mobile-card-top"><span class="platform-chip">${esc(platformLabel(r.platform))}</span><span class="status-chip ${statusClass(r.status)}">${esc(r.status==='done'?'Published':r.status||'—')}</span></div>
       <h3>${esc(r.title||'Content')}</h3>
       <p>${esc(r.campaign_name||'No campaign')} · ${esc(r.account_username||'No account')}</p>
-      <div class="content-mobile-metrics"><span><strong>${r.views==null?'—':fmt(r.views)}</strong> views</span><span><strong>${fmt(r.primary_result||0)}</strong> ${esc(r.primary_result_label||'results')}</span><span>${esc(dateShort(r.finished_at||r.created_at)||'')}</span></div>
+      <div class="content-mobile-metrics"><span><strong>${r.views==null?'—':fmt(r.views)}</strong> views</span><span><strong>${r.comments==null?'—':fmt(r.comments)}</strong> comments</span><span><strong>${fmt(r.primary_result||0)}</strong> ${esc(r.primary_result_label||'results')}</span><span>${esc(dateShort(r.finished_at||r.created_at)||'')}</span></div>
       <div class="content-mobile-actions">
         <button class="open-btn content-preview" data-queue="${esc(r.queue_id)}" type="button">View details</button>
         ${r.external_post_url?`<a class="post-url" href="${esc(r.external_post_url)}" target="_blank" rel="noopener">Open post ↗</a>`:''}
@@ -161,7 +162,7 @@ $('content-filter-button')?.addEventListener('click',e=>{e.stopPropagation();con
 $('content-columns-button')?.addEventListener('click',e=>{e.stopPropagation();const f=$('content-filter-panel'),c=$('content-columns-panel');c.hidden=!c.hidden;f.hidden=true;renderManager()});
 $('close-content-filters')?.addEventListener('click',()=>$('content-filter-panel').hidden=true);
 $('close-content-columns')?.addEventListener('click',()=>$('content-columns-panel').hidden=true);
-$('reset-content-filters')?.addEventListener('click',()=>{for(const id of ['content-platform-filter','content-status-filter','content-campaign-filter','content-date-filter'])$(id).value='all';render()});
+$('reset-content-filters')?.addEventListener('click',()=>{for(const id of ['content-platform-filter','content-campaign-filter'])$(id).value='all';$('content-status-filter').value='done';$('content-date-filter').value='30';render()});
 $('reset-content-columns')?.addEventListener('click',()=>{ui.columns=defaults.map(x=>({...x}));save();render()});
 document.addEventListener('click',e=>{if(!e.target.closest('.content-toolbar')){$('content-filter-panel')&&($('content-filter-panel').hidden=true);$('content-columns-panel')&&($('content-columns-panel').hidden=true)}});
 
