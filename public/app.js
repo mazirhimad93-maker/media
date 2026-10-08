@@ -1226,21 +1226,14 @@ function renderCampaigns(){
 
 function contentFilterRows(){
   const platform=$('content-platform-filter')?.value||'all';
-  const status=$('content-status-filter')?.value||'all';
+  const status=$('content-status-filter')?.value||'done';
   const campaign=$('content-campaign-filter')?.value||'all';
   const dateWindow=$('content-date-filter')?.value||'all';
-  const cutoff=dateWindow==='all'?null:(Date.now()-Number(dateWindow)*86400000);
-
-  return (state.content?.rows||[]).filter(row=>{
-    if(platform!=='all' && row.platform!==platform) return false;
-    if(status!=='all' && row.status!==status) return false;
-    if(campaign!=='all' && !campaignMemberIds(campaign).has(row.campaign_id)) return false;
-    if(cutoff && new Date(row.finished_at||row.created_at||0).getTime()<cutoff) return false;
-    return true;
-  });
+  return (state.content?.rows||[]).filter(row=>window.__alchemicContentFilters.matches(row,{platform,status,campaign,campaignIds:[...campaignMemberIds(campaign)],date:dateWindow}));
 }
 
 function renderContent(){
+  if(window.__alchemicContentTable) return window.__alchemicContentTable.render();
   const rows=contentFilterRows();
 
   $('content-summary').innerHTML=[

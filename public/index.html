@@ -251,7 +251,7 @@
                     <option value="all">All dates</option>
                     <option value="1">Today</option>
                     <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
+                    <option value="30" selected>Last 30 days</option>
                     <option value="90">Last 90 days</option>
                   </select>
                 </label>
@@ -259,7 +259,7 @@
                   <span>Status</span>
                   <select id="content-status-filter">
                     <option value="all">All statuses</option>
-                    <option value="done">Published</option>
+                    <option value="done" selected>Published</option>
                     <option value="ready">Ready</option>
                     <option value="running">Running</option>
                     <option value="failed">Failed</option>
@@ -308,6 +308,7 @@
               <span id="content-metrics-status" class="metrics-sync-status">Metrics ready</span>
               <button id="sync-metrics" class="text-btn" type="button">Sync now</button>
               <select id="content-range-select" aria-label="Analytics timeline">
+                <option value="1">Today</option>
                 <option value="7">Last 7 days</option>
                 <option value="30" selected>Last 30 days</option>
                 <option value="90">Last 90 days</option>
@@ -784,6 +785,7 @@
     </aside>
   </div>
 
+  <script src="/content-filters.js"></script>
   <script type="module" src="/app.js"></script>
   <script type="module" src="/auth-inbox.js"></script>
   <script type="module" src="/leads.js"></script>
