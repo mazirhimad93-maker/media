@@ -1,4 +1,5 @@
 import { eligibilityLabel } from './messaging-policy.js';
+import { initMobileInbox, openMobileThread, closeMobileThread, isMobileInbox } from './mobile-inbox.js';
 const $ = (id) => document.getElementById(id);
 
 let media = null;
@@ -10,6 +11,7 @@ let pendingAttachment = null;
 let recordingSession = null;
 let recordingTimer = null;
 let replyBusy = false;
+let inboxUnreadOnly = false;
 const receiptUpgradeAttempted = new Set();
 
 function waitForMedia() {
@@ -217,9 +219,14 @@ function inboxThreadRows() {
     }
 
   rows.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
-  if (!search) return rows;
+  const visible = inboxUnreadOnly && isMobileInbox() ? rows.filter(row => row.unread > 0) : rows;
+  if (!search) return visible;
 
-  return rows.filter((x) => [x.name, x.meta, x.preview].filter(Boolean).join(' ').toLowerCase().includes(search));
+  return visible.filter((x) => [x.name, x.meta, x.preview].filter(Boolean).join(' ').toLowerCase().includes(search));
+}
+
+function contactInitials(name) {
+  return String(name || '?').replace(/^@/, '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map(part => Array.from(part)[0]).join('').toUpperCase();
 }
 
 function renderInboxThreads() {
@@ -229,13 +236,16 @@ function renderInboxThreads() {
   $('inbox-thread-list').innerHTML = rows.length ? rows.map((row) => {
     const active = selected && selected.source === row.source && String(selected.id) === String(row.id);
     return '<button class="inbox-thread ' + (active ? 'active ' : '') + (row.unread ? 'unread' : '') + '" data-source="' + media.esc(row.source) + '" data-id="' + media.esc(row.id) + '" aria-label="' + media.esc(row.name + (row.unread ? `, ${row.unread} unread message${row.unread === 1 ? '' : 's'}` : '')) + '">' +
+      '<span class="inbox-thread-avatar" aria-hidden="true">' + media.esc(contactInitials(row.name)) + '</span><div class="inbox-thread-copy">' +
       '<div class="inbox-thread-top"><strong>' + media.esc(row.name) + '</strong><span>' + dateLabel(row.at) + '</span></div>' +
       '<div class="inbox-thread-meta">' + media.esc(row.meta) + '</div>' +
       '<div class="thread-messaging-state">'+media.esc(eligibilityLabel(row.raw?.messaging_eligibility))+'</div>'+
       '<div class="inbox-thread-preview">' + media.esc(String(row.preview || '').slice(0, 130)) + '</div>' +
+      '</div>' +
       (row.unread ? '<b class="thread-unread" aria-hidden="true">' + (row.unread > 1 ? row.unread : '') + '</b>' : '') +
       '</button>';
-  }).join('') : '<div class="empty-list">No conversations yet.</div>';
+  }).join('') : '<div class="empty-list">' + ($('inbox-search').value.trim() ? 'No matching conversations.' : inboxUnreadOnly && isMobileInbox() ? 'You’re all caught up. No unread chats.' : 'No conversations yet.') + '</div>';
+  $('inbox-unread-threads').textContent = String((media.state.inbox.social || []).filter(row => Number(row.unread_count) > 0).length);
 
   document.querySelectorAll('.inbox-thread').forEach((button) => {
     button.onclick = () => {
@@ -581,6 +591,7 @@ async function refreshConversation() {
 }
 
 async function openInboxThread(row) {
+  if ($('inbox-messages-panel').hidden) $('inbox-messages-tab').click();
   const switching = String(media.state.inbox.selected?.id) !== String(row.id);
   media.state.inbox.selected = row;
   if (switching) {
@@ -600,6 +611,8 @@ async function openInboxThread(row) {
   $('inbox-conversation-wrap').hidden = false;
   $('conversation-contact-name').textContent = row.name;
   $('conversation-contact-meta').textContent = row.meta;
+  $('conversation-avatar').textContent = contactInitials(row.name);
+  openMobileThread(row.id);
   if (conversationFetch) await conversationFetch;
   await refreshConversation();
   loadInbox();
@@ -653,6 +666,13 @@ async function uploadAttachment(file, conversationId) {
   return result;
 }
 
+function setReplyButtonLabel(text) {
+  const button = $('conversation-reply-submit');
+  button.querySelector('.composer-send-label').textContent = text;
+  button.setAttribute('aria-label', text === 'Send' ? 'Send message' : text);
+  button.setAttribute('aria-busy', String(text !== 'Send'));
+}
+
 async function sendReply(event) {
   event.preventDefault();
   const selected = media.state.inbox.selected;
@@ -686,14 +706,14 @@ async function sendReply(event) {
   try {
     let uploaded;
     if (attachment) {
-      button.textContent = 'Uploading…';
+      setReplyButtonLabel('Uploading…');
       uploaded = await uploadAttachment(attachment.file, selected.id);
       local.media_url = uploaded.url;
       local.message_type = uploaded.type;
       local.status = 'sending';
       if (media.state.inbox.selected?.id === selected.id) renderConversation(true);
     }
-    button.textContent = 'Sending…';
+    setReplyButtonLabel('Sending…');
     const result = await media.api('/api/social/reply', {
       method: 'POST', body: { conversationId: selected.id, body: attachment ? '' : body,
         purpose:$('human-support-reply').checked?'human_support':'conversation',
@@ -714,7 +734,7 @@ async function sendReply(event) {
     if (media.state.inbox.selected?.id === selected.id) $('composer-error').textContent = error.message;
   } finally {
     replyBusy=false;
-    button.textContent = 'Send';
+    setReplyButtonLabel('Send');
     updateComposerState();
     $('conversation-reply-body').focus();
   }
@@ -849,6 +869,7 @@ function resizeComposer() {
 }
 
 function bindUi() {
+  initMobileInbox(() => { if (media) renderInboxThreads(); });
   $('auth-tab-login').addEventListener('click', () => setAuthMode('login'));
   $('auth-tab-register').addEventListener('click', () => setAuthMode('register'));
   $('login-form').addEventListener('submit', login);
@@ -864,7 +885,17 @@ function bindUi() {
   $('inbox-search').addEventListener('input', renderInboxThreads);
   $('conversation-reply-form').addEventListener('submit', sendReply);
   $('conversation-lead-status').addEventListener('change', changeLeadStatus);
-  $('conversation-back').addEventListener('click', () => document.querySelector('.inbox-layout').classList.remove('show-thread'));
+  $('conversation-back').addEventListener('click', closeMobileThread);
+  for (const [id, unreadOnly] of [['inbox-filter-all', false], ['inbox-filter-unread', true]]) {
+    $(id).addEventListener('click', () => {
+      inboxUnreadOnly = unreadOnly;
+      for (const [buttonId, selected] of [['inbox-filter-all', !unreadOnly], ['inbox-filter-unread', unreadOnly]]) {
+        $(buttonId).classList.toggle('active', selected);
+        $(buttonId).setAttribute('aria-pressed', String(selected));
+      }
+      renderInboxThreads();
+    });
+  }
   $('conversation-messages').addEventListener('click', async (event) => {
     const button = event.target.closest('.outbox-send-now');
     if (!button) return;
@@ -882,7 +913,7 @@ function bindUi() {
     }
   });
   $('conversation-reply-body').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !isMobileInbox()) {
       event.preventDefault();
       $('conversation-reply-form').requestSubmit();
     }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="robots" content="noindex,nofollow">
   <title>Alchemic Media</title>
   <link rel="stylesheet" href="/styles.css">
@@ -409,6 +409,10 @@
         <div class="inbox-layout">
           <aside class="inbox-sidebar card">
             <div class="inbox-search-wrap"><input id="inbox-search" type="search" placeholder="Search conversations"></div>
+            <div class="inbox-mobile-filters" role="group" aria-label="Filter conversations">
+              <button id="inbox-filter-all" type="button" class="active" aria-pressed="true">All chats</button>
+              <button id="inbox-filter-unread" type="button" aria-pressed="false">Unread <span id="inbox-unread-threads">0</span></button>
+            </div>
             <div id="inbox-thread-list" class="inbox-thread-list"></div>
           </aside>
 
@@ -421,12 +425,15 @@
 
             <div id="inbox-conversation-wrap" hidden>
               <div class="conversation-toolbar">
-                <div>
-                  <button id="conversation-back" class="text-btn conversation-back" type="button">← Conversations</button>
-                  <h3 id="conversation-contact-name">Conversation</h3>
-                  <p id="conversation-contact-meta"></p>
+                <div class="conversation-heading">
+                  <button id="conversation-back" class="text-btn conversation-back" type="button" aria-label="Back to conversations"><span aria-hidden="true">←</span><span class="conversation-back-label"> Conversations</span></button>
+                  <span id="conversation-avatar" class="conversation-avatar" aria-hidden="true"></span>
+                  <div class="conversation-identity">
+                    <h3 id="conversation-contact-name">Conversation</h3>
+                    <p id="conversation-contact-meta"></p>
+                  </div>
                 </div>
-                <select id="conversation-lead-status">
+                <select id="conversation-lead-status" aria-label="Lead status">
                   <option value="new">New</option>
                   <option value="engaged">Engaged</option>
                   <option value="qualified">Qualified</option>
@@ -442,7 +449,8 @@
 
               <form id="conversation-reply-form" class="conversation-composer">
                 <div class="composer-input-row">
-                  <div class="composer-tools">
+                  <button id="composer-more-button" class="composer-more-button" type="button" aria-label="Message tools" aria-expanded="false" aria-controls="composer-tools"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                  <div id="composer-tools" class="composer-tools">
                     <button id="composer-emoji-button" class="composer-tool" type="button" aria-label="Choose emoji" title="Emoji">☺</button>
                     <button id="composer-file-button" class="composer-tool" type="button" aria-label="Attach a file" title="Photo, video, audio or file">＋</button>
                     <input id="composer-file-input" type="file" accept="image/jpeg,image/png,video/mp4,audio/mp4,audio/wav,.m4a,.wav,.pdf" hidden>
@@ -450,7 +458,7 @@
                     <div id="composer-emoji-picker" class="composer-emoji-picker" hidden></div>
                   </div>
                   <textarea id="conversation-reply-body" rows="1" placeholder="Message…" aria-label="Message"></textarea>
-                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit">Send</button>
+                  <button id="conversation-reply-submit" class="primary-inline-btn" type="submit" aria-label="Send message"><span class="composer-send-label">Send</span><svg class="composer-send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 19 9-19 9 4-9-4-9Zm4 9h15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
                 <div id="composer-attachment" class="composer-attachment" hidden></div>
                 <div class="composer-actions">
