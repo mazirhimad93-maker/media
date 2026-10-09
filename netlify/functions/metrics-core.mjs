@@ -38,8 +38,14 @@ export async function refreshYouTube(account){
   if(account?.token_expires_at && new Date(account.token_expires_at).getTime()>Date.now()+60_000 && account.access_token) return account.access_token;
   if(!account?.refresh_token) throw new Error('YouTube refresh token missing');
 
-  const clientId=process.env.GOOGLE_CLIENT_ID?.trim() || account.settings_json?.google_client_id;
-  const clientSecret=process.env.GOOGLE_CLIENT_SECRET?.trim() || account.settings_json?.google_client_secret;
+  const configuredId=process.env.GOOGLE_CLIENT_ID?.trim();
+  const savedId=account.settings_json?.google_client_id?.trim();
+  const clientId=savedId || configuredId;
+  // Existing channels can still belong to the previous OAuth client while
+  // other channels are being reconnected. Refresh with the matching pair.
+  const clientSecret=savedId && savedId!==configuredId
+    ? account.settings_json?.google_client_secret?.trim()
+    : process.env.GOOGLE_CLIENT_SECRET?.trim() || account.settings_json?.google_client_secret?.trim();
   if(!clientId||!clientSecret) throw new Error('YouTube OAuth client credentials missing');
 
   const response=await fetch('https://oauth2.googleapis.com/token',{

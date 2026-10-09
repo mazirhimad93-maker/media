@@ -3,6 +3,7 @@ import test from 'node:test';
 import callback from '../netlify/functions/oauth-youtube-callback.mjs';
 import { signOAuthState } from '../netlify/functions/_shared.mjs';
 import { safeSettings } from '../netlify/functions/channel-settings.mjs';
+import { refreshYouTube } from '../netlify/functions/metrics-core.mjs';
 
 test('YouTube reconnect keeps the distributor credentials paired with the refresh token', async () => {
   const names = ['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','OAUTH_STATE_SECRET','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'];
@@ -58,4 +59,26 @@ test('YouTube reconnect keeps the distributor credentials paired with the refres
 
 test('channel limit responses omit credentials and private settings', () => {
   assert.deepEqual(safeSettings({id:'account-1',daily_limit:6,weekly_limit:42,min_gap_minutes:240,access_token:'private-access',refresh_token:'private-refresh',settings_json:{google_client_secret:'private-secret'}}),{id:'account-1',daily_limit:6,weekly_limit:42,min_gap_minutes:240});
+});
+
+test('channel reads refresh tokens with their original client during migration', async () => {
+  const names=['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'];
+  const previous=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+  const oldFetch=globalThis.fetch;
+  Object.assign(process.env,{SUPABASE_URL:'https://test.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'test-key',GOOGLE_CLIENT_ID:'new-client',GOOGLE_CLIENT_SECRET:'new-secret'});
+  const pairs=[];
+  globalThis.fetch=async(url,options)=>{
+    if(String(url)==='https://oauth2.googleapis.com/token') pairs.push([options.body.get('client_id'),options.body.get('client_secret')]);
+    return new Response(JSON.stringify(String(url)==='https://oauth2.googleapis.com/token'?{access_token:'access'}:[]));
+  };
+  try {
+    await refreshYouTube({id:'old',refresh_token:'old-refresh',settings_json:{google_client_id:'old-client',google_client_secret:'old-secret'}});
+    await refreshYouTube({id:'new',refresh_token:'new-refresh',settings_json:{google_client_id:'new-client',google_client_secret:'stale-secret'}});
+    assert.deepEqual(pairs,[['old-client','old-secret'],['new-client','new-secret']]);
+    await assert.rejects(refreshYouTube({id:'incomplete',refresh_token:'old-refresh',settings_json:{google_client_id:'old-client'}}),/credentials missing/);
+    assert.equal(pairs.length,2);
+  } finally {
+    globalThis.fetch=oldFetch;
+    for(const name of names) { if(previous[name]===undefined) delete process.env[name]; else process.env[name]=previous[name]; }
+  }
 });
