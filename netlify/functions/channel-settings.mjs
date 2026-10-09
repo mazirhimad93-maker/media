@@ -5,6 +5,10 @@ const int=(value,min,max,fallback)=>{
   return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
 };
 
+export const safeSettings = account => Object.fromEntries(
+  ['id','daily_limit','weekly_limit','min_gap_minutes'].map(key=>[key,account[key]])
+);
+
 export default async (request)=>{
   try{
     const {workspaceId}=await requireWorkspace(request);
@@ -25,7 +29,7 @@ export default async (request)=>{
         scopedPath('content_accounts',workspaceId),
         {method:'PATCH',headers:{Prefer:'return=representation'},body:patch}
       );
-      return jsonResponse({ok:true,updated:(updated||[]).length,accounts:updated||[]});
+      return jsonResponse({ok:true,updated:(updated||[]).length,accounts:(updated||[]).map(safeSettings)});
     }
 
     const accountId=String(input.accountId||'').trim();
@@ -42,7 +46,7 @@ export default async (request)=>{
       {method:'PATCH',headers:{Prefer:'return=representation'},body:patch}
     );
 
-    return jsonResponse({ok:true,account:updated?.[0]||{...account,...patch}});
+    return jsonResponse({ok:true,account:safeSettings(updated?.[0]||{...account,...patch})});
   }catch(error){
     return publicError(error,error.status||500);
   }

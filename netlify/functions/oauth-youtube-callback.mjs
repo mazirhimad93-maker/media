@@ -27,8 +27,11 @@ export default async (request) => {
       channelData.items=channelData.items.filter(c=>String(c.id)===String(requested.platform_account_id));
     }
     for (const channel of channelData.items) {
-      const existing = await supabaseRequest(`content_accounts?platform=eq.youtube_shorts&platform_account_id=eq.${encodeURIComponent(channel.id)}&select=refresh_token&limit=1`);
-      const refreshToken = token.refresh_token || existing?.[0]?.refresh_token;
+      const existing = await supabaseRequest(`content_accounts?platform=eq.youtube_shorts&platform_account_id=eq.${encodeURIComponent(channel.id)}&select=refresh_token,settings_json&limit=1`);
+      // Refresh tokens belong to their original OAuth client. Never carry an old
+      // client's token into a connection authorized with a replacement client.
+      const sameClient = existing?.[0]?.settings_json?.google_client_id === process.env.GOOGLE_CLIENT_ID.trim();
+      const refreshToken = token.refresh_token || (sameClient ? existing?.[0]?.refresh_token : null);
       if (!refreshToken) throw new Error('Google did not return a refresh token. Remove the app from Google Account connections, then connect again.');
       const result = await upsertConnectedAccount({
         platform:'youtube_shorts', platform_account_id:channel.id, username:channel.snippet?.customUrl || channel.snippet?.title || channel.id,
@@ -37,7 +40,8 @@ export default async (request) => {
         scope:token.scope || '',
         daily_limit:state.dailyLimit, weekly_limit:state.weeklyLimit, min_gap_minutes:state.minGapMinutes,
         error_message:null, capabilities_json:{publish:/youtube.upload|youtube.force-ssl/.test(token.scope || ''),analytics:/yt-analytics.readonly/.test(token.scope || ''),comments_read:/youtube.readonly|youtube.force-ssl/.test(token.scope || ''),comments_write:/youtube.force-ssl/.test(token.scope || '')},
-        settings_json:{google_client_id:process.env.GOOGLE_CLIENT_ID.trim(), youtube_privacy_status:'public', youtube_category_id:'22', youtube_notify_subscribers:true},
+        // The server-side distributor refreshes tokens from these private account settings.
+        settings_json:{google_client_id:process.env.GOOGLE_CLIENT_ID.trim(), google_client_secret:process.env.GOOGLE_CLIENT_SECRET.trim(), youtube_privacy_status:'public', youtube_category_id:'22', youtube_notify_subscribers:true},
         metadata:{oauth_provider:'google', connected_at:new Date().toISOString(), channel_status:channel.status || {}}
       }, assignmentFromState(state));
       connected.push({ ...result.saved, pool: result.pool });
